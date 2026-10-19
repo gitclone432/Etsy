@@ -22,6 +22,10 @@ import { runAllDueSourcingRules, resetStuckSourcingRuns } from './lib/sourcingRu
 
 const scheduledTaskMap = new Map();
 
+function isLocalRunner() {
+  return String(process.env.RUNNER_ID || 'local').trim().toLowerCase() === 'local';
+}
+
 const gmailImportEnabled = String(process.env.GMAIL_IMPORT_ENABLED || '').toLowerCase() === 'true';
 
 export const CRON_JOB_DEFINITIONS = [
@@ -401,6 +405,10 @@ function scheduleJob(config) {
 
 export async function reloadScheduledJobs() {
   stopAllScheduledTasks();
+  if (isLocalRunner()) {
+    console.log('[CRON] Skipped scheduled jobs because RUNNER_ID=local');
+    return;
+  }
   const configs = await CronJobConfig.find().lean();
   for (const config of configs) {
     scheduleJob(config);
@@ -408,6 +416,10 @@ export async function reloadScheduledJobs() {
 }
 
 export async function initializeScheduledJobs() {
+  if (isLocalRunner()) {
+    console.log('[CRON] Local runner: scheduled jobs are not started');
+    return;
+  }
   await ensureCronConfigDefaults();
   await reloadScheduledJobs();
 

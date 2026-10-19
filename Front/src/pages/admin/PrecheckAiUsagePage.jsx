@@ -36,6 +36,7 @@ import ReplayIcon from '@mui/icons-material/Replay';
 import TokenIcon from '@mui/icons-material/Token';
 import BoltIcon from '@mui/icons-material/Bolt';
 import api from '../../lib/api';
+import { REPORT_TIMEZONE, pacificDaysAgoString, toPacificDateString } from '../../utils/pacificDate.js';
 import { BRAND_DARK, BRAND_YELLOW } from '../../constants/brandTheme.js';
 import { dashboardSignatureTokens } from '../../theme/appTheme.js';
 import {
@@ -50,21 +51,21 @@ import {
 const numberFmt = new Intl.NumberFormat('en-US');
 
 function getDefaultStartDate() {
-  const date = new Date();
-  date.setDate(date.getDate() - 7);
-  return date.toISOString().slice(0, 10);
+  return pacificDaysAgoString(7);
 }
 
 function getDefaultEndDate() {
-  return new Date().toISOString().slice(0, 10);
+  return toPacificDateString();
 }
 
 function toDateTimeLocal(dateValue, timeValue = '00:00') {
   return `${dateValue}T${timeValue}`;
 }
 
-function toIsoDateTime(value) {
-  return value ? new Date(value).toISOString() : undefined;
+// Sent as the wall-clock value typed (YYYY-MM-DDTHH:mm); the server reads it
+// in Pacific time, matching the Date Only mode.
+function toDateTimeParam(value) {
+  return value || undefined;
 }
 
 function formatNumber(value) {
@@ -75,8 +76,8 @@ function formatDateParts(value) {
   if (!value) return { date: '-', time: '' };
   const d = new Date(value);
   return {
-    date: d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }),
-    time: d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+    date: d.toLocaleDateString('en-US', { timeZone: REPORT_TIMEZONE, day: '2-digit', month: 'short', year: 'numeric' }),
+    time: d.toLocaleTimeString('en-US', { timeZone: REPORT_TIMEZONE, hour: '2-digit', minute: '2-digit', timeZoneName: 'short' })
   };
 }
 
@@ -228,11 +229,11 @@ export default function PrecheckAiUsagePage() {
         params.startDate = undefined;
         params.endDate = undefined;
         params.startDateTime = activeDateMode === 'single'
-          ? toIsoDateTime(activeSingleDateTime)
-          : toIsoDateTime(activeStartDateTime);
+          ? toDateTimeParam(activeSingleDateTime)
+          : toDateTimeParam(activeStartDateTime);
         params.endDateTime = activeDateMode === 'single'
           ? undefined
-          : toIsoDateTime(activeEndDateTime);
+          : toDateTimeParam(activeEndDateTime);
       }
       const { data } = await api.get('/template-listings/api/precheck-usage-summary', { params });
       setRows(data.rows || []);

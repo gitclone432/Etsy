@@ -15,10 +15,8 @@ export const PAGE_CATEGORIES = {
   orderFulfilment: { id: 'orderFulfilment', name: 'Order Fulfilment', icon: 'LocalShippingIcon' },
   compatibility: { id: 'compatibility', name: 'Compatibility', icon: 'TaskIcon' },
   listingResearch: { id: 'listingResearch', name: 'Product Listings', icon: 'ListAltIcon' },
-  finance: { id: 'finance', name: 'Finance & Cash Flow', icon: 'AttachMoneyIcon' },
   compliance: { id: 'compliance', name: 'Compliance & Support', icon: 'AdminPanelSettingsIcon' },
   ebayParams: { id: 'ebayParams', name: 'eBay Parameters', icon: 'StoreIcon' },
-  hrManagement: { id: 'hrManagement', name: 'HR & Management', icon: 'SupervisorAccountIcon' },
   others: { id: 'others', name: 'Others', icon: 'AppsIcon' },
   etsy: { id: 'etsy', name: 'ETSY', icon: 'StorefrontIcon' },
   ebayBuying: { id: 'ebayBuying', name: 'eBay Buying', icon: 'ShoppingCartIcon' },
@@ -85,6 +83,7 @@ export const PAGE_REGISTRY = [
   { id: 'SelectSellerLab', name: 'CSV Listings', path: '/select-seller-lab', category: 'listingResearch', submenu: 'templateListing', defaultRoles: ['superadmin', 'lister', 'advancelister', 'trainee'] },
   { id: 'AmazonSearch', name: 'Amazon Search', path: '/amazon-search', category: 'listingResearch', submenu: 'templateListing', defaultRoles: ['superadmin', 'listingadmin', 'lister', 'advancelister', 'trainee'] },
   { id: 'AsinPrecheck', name: 'ASIN Precheck', path: '/asin-precheck', category: 'listingResearch', submenu: 'templateListing', defaultRoles: ['superadmin', 'lister', 'advancelister', 'trainee'] },
+  { id: 'AsinPrecheckExclusions', name: 'Precheck Exclusions', path: '/asin-precheck-exclusions', category: 'listingResearch', submenu: 'templateListing', defaultRoles: ['superadmin', 'lister', 'advancelister', 'trainee'] },
   { id: 'AsinPrecheckStats', name: 'ASIN Precheck Stats', path: '/asin-precheck-stats', category: 'listingResearch', submenu: 'templateListing', defaultRoles: ['superadmin'] },
   { id: 'AsinPrecheckExclusions', name: 'Precheck Exclusions', path: '/asin-precheck-exclusions', category: 'listingResearch', submenu: 'templateListing', defaultRoles: ['superadmin', 'lister', 'advancelister', 'trainee'] },
   { id: 'PrecheckAiUsage', name: 'Precheck AI Usage', path: '/precheck-ai-usage', category: 'listingResearch', defaultRoles: ['superadmin', 'listingadmin'] },
@@ -106,25 +105,6 @@ export const PAGE_REGISTRY = [
   { id: 'UserCategoryTargets', name: 'User Category Targets', path: '/user-category-targets', category: 'listingResearch', defaultRoles: ['superadmin', 'hradmin', 'hr'] },
   { id: 'UserListingPerformance', name: 'Listing Performance', path: '/user-listing-performance', category: 'listingResearch', defaultRoles: ['superadmin', 'hradmin', 'hr'] },
 
-  // ====== FINANCE & CASH FLOW ======
-  { id: 'Payoneer', name: 'Payoneer Sheet', path: '/payoneer', category: 'finance', defaultRoles: ['superadmin'] },
-  { id: 'BankAccounts', name: 'Bank Accounts', path: '/bank-accounts', category: 'finance', defaultRoles: ['superadmin'] },
-  { id: 'Transactions', name: 'Transactions', path: '/transactions', category: 'finance', defaultRoles: ['superadmin'] },
-  { id: 'ExtraExpenses', name: 'Extra Expenses', path: '/extra-expenses', category: 'finance', defaultRoles: ['superadmin'] },
-  { id: 'DailyCardExpenses', name: 'Daily Card Expenses', path: '/daily-card-expenses', category: 'finance', defaultRoles: ['superadmin'] },
-  { id: 'CardFundRequests', name: 'Card Fund Requests', path: '/card-fund-requests', category: 'finance', defaultRoles: ['superadmin'] },
-  { id: 'CardBalanceRecords', name: 'Card Balance Records', path: '/card-balance-records', category: 'finance', defaultRoles: ['superadmin'] },
-  { id: 'RevenueGrossNet', name: 'Revenue (Gross & Net)', path: '/revenue-gross-net', category: 'finance', defaultRoles: ['superadmin'] },
-  { id: 'Cashflow', name: 'Gross & Net', path: '/cashflow', category: 'finance', defaultRoles: ['superadmin'] },
-  { id: 'InvoiceUpload', name: 'Invoice Upload', path: '/invoice-upload', category: 'finance', defaultRoles: ['superadmin'] },
-  { id: 'Affiliate', name: 'Store Subscription', path: '/store-subscriptions', category: 'finance', defaultRoles: ['superadmin'] },
-  { id: 'StoreProfitability', name: 'Store Profitability', path: '/store-profitability', category: 'finance', defaultRoles: ['superadmin'] },
-  { id: 'Salary', name: 'Salary Page', path: '/salary', category: 'finance', defaultRoles: ['superadmin'] },
-  { id: 'AllOrdersSheet', name: 'All Orders USD', path: '/all-orders-sheet', category: 'finance', defaultRoles: ['superadmin', 'fulfillmentadmin', 'hoc', 'compliancemanager'] },
-  { id: 'PriceChangeHistory', name: 'Price Change History', path: '/price-change-history', category: 'finance', defaultRoles: ['superadmin', 'fulfillmentadmin', 'hoc', 'compliancemanager'] },
-  { id: 'SellerAnalytics', name: 'Seller Analytics', path: '/seller-analytics', category: 'finance', defaultRoles: ['superadmin', 'fulfillmentadmin', 'hoc', 'compliancemanager'] },
-  { id: 'MicroOrders', name: 'Micro Orders', path: '/micro-orders', category: 'finance', defaultRoles: ['superadmin', 'fulfillmentadmin', 'hoc', 'compliancemanager'] },
-
   // ====== COMPLIANCE & SUPPORT ======
   { id: 'ComplianceBoard', name: 'Compliance Board', path: '/compliance-board', category: 'compliance', defaultRoles: ['superadmin', 'fulfillmentadmin', 'hoc', 'compliancemanager'] },
   { id: 'ComplianceMonitoring', name: 'Compliance Monitoring', path: '/compliance-monitoring', category: 'compliance', defaultRoles: ['superadmin', 'fulfillmentadmin', 'hoc', 'compliancemanager'] },
@@ -133,7 +113,6 @@ export const PAGE_REGISTRY = [
   { id: 'BuyerMessages', name: 'Buyer Messages', path: '/message-received', category: 'compliance', defaultRoles: ['superadmin', 'fulfillmentadmin', 'hoc', 'compliancemanager'] },
   { id: 'ConversationManagement', name: 'Conversation Mgmt', path: '/conversation-management', category: 'compliance', defaultRoles: ['superadmin', 'fulfillmentadmin', 'hoc', 'compliancemanager'] },
   { id: 'AmazonAccounts', name: 'Supplier Accounts', path: '/amazon-accounts', category: 'settingsSection', defaultRoles: ['superadmin', 'fulfillmentadmin', 'hoc', 'compliancemanager'] },
-  { id: 'CreditCards', name: 'Manage Credit Cards', path: '/credit-cards', category: 'finance', defaultRoles: ['superadmin', 'fulfillmentadmin', 'hoc', 'compliancemanager'] },
   { id: 'ExcludeOrderQtySkips', name: 'Exclude <$3', path: '/exclude-order-qty-skips', category: 'settingsSection', defaultRoles: ['superadmin', 'fulfillmentadmin', 'hoc', 'compliancemanager'] },
   { id: 'CronJobs', name: 'Cron Jobs', path: '/cron-jobs', category: 'settingsSection', defaultRoles: ['superadmin'] },
   { id: 'InfraUsage', name: 'Infra Usage', path: '/infra-usage', category: 'settingsSection', defaultRoles: ['superadmin'] },
@@ -167,21 +146,6 @@ export const PAGE_REGISTRY = [
   { id: 'FinancesPayoutGroups', name: 'Finances by Payout', path: '/finances/transactions-by-payout', category: 'ebayParams', defaultRoles: ['superadmin', 'listingadmin'] },
   { id: 'Discounts', name: 'Discounts', path: '/discounts', category: 'ebayParams', defaultRoles: ['superadmin', 'listingadmin', 'fulfillmentadmin', 'hoc', 'compliancemanager'] },
 
-  // ====== HR & MANAGEMENT ======
-  { id: 'IdeasAndIssues', name: 'Ideas and Issues', path: '/ideas', category: 'hrManagement', defaultRoles: ['superadmin', 'hradmin', 'operationhead', 'listingadmin'] },
-  { id: 'TeamChat', name: 'Team Chat', path: '/internal-messages', category: 'hrManagement', defaultRoles: ['superadmin', 'hradmin', 'operationhead', 'listingadmin'] },
-  { id: 'LeaveAdmin', name: 'Leave Admin', path: '/leave-admin', category: 'hrManagement', defaultRoles: ['superadmin', 'hradmin'] },
-  { id: 'EmployeeManagement', name: 'Team Management', path: '/employee-management', category: 'hrManagement', defaultRoles: ['superadmin', 'listingadmin', 'hradmin', 'operationhead'] },
-  { id: 'AddUser', name: 'Add User', path: '/add-user', category: 'hrManagement', defaultRoles: ['superadmin', 'listingadmin', 'hradmin', 'operationhead'] },
-  { id: 'AddSeller', name: 'Seller Management', path: '/add-seller', category: 'hrManagement', defaultRoles: ['superadmin', 'hradmin', 'operationhead'] },
-  { id: 'UserSellerAssignments', name: 'User-Seller Assignments', path: '/user-seller-assignments', category: 'hrManagement', defaultRoles: ['superadmin', 'hradmin', 'hr'] },
-  { id: 'Meetings', name: 'Meetings', path: '/meetings', category: 'hrManagement', defaultRoles: ['superadmin', 'productadmin', 'listingadmin', 'lister', 'advancelister', 'compatibilityadmin', 'compatibilityeditor', 'fulfillmentadmin', 'hradmin', 'hr', 'operationhead', 'trainee', 'hoc', 'compliancemanager'] },
-  { id: 'ViewAllMessages', name: 'View All Messages', path: '/internal-messages-admin', category: 'hrManagement', defaultRoles: ['superadmin'] },
-  { id: 'Attendance', name: 'Working Hours Tracking', path: '/attendance', category: 'hrManagement', defaultRoles: ['superadmin'] },
-  { id: 'PageAccessManagement', name: 'Page Access Management', path: '/page-access-management', category: 'hrManagement', defaultRoles: ['superadmin'] },
-  { id: 'PageAccessAuditLog', name: 'Page Access Audit Log', path: '/page-access-audit-log', category: 'hrManagement', defaultRoles: ['superadmin'] },
-  { id: 'UserPasswordManagement', name: 'User Password Management', path: '/user-password-management', category: 'hrManagement', defaultRoles: ['superadmin'] },
-
   // ====== OTHERS ======
   { id: 'ManageCategories', name: 'Manage Categories', path: '/categories', category: 'others', defaultRoles: ['superadmin', 'productadmin'] },
   { id: 'ManagePlatforms', name: 'Manage Platforms', path: '/platforms', category: 'others', defaultRoles: ['superadmin', 'listingadmin'] },
@@ -198,6 +162,8 @@ export const PAGE_REGISTRY = [
   { id: 'EtsyProfitSheet', name: 'Profit Sheet', path: '/etsy/profit-sheet', category: 'etsy', defaultRoles: ['superadmin', 'listingadmin'] },
   { id: 'EtsyOrderAnalytics', name: 'Etsy Order Analytics', path: '/etsy/order-analytics', category: 'etsy', defaultRoles: ['superadmin', 'listingadmin'] },
   { id: 'EtsyDailyOrders', name: 'Daily Orders', path: '/etsy/daily-orders', category: 'etsy', defaultRoles: ['superadmin', 'listingadmin'] },
+  { id: 'AsinRefine', name: 'ASIN Refine', path: '/etsy/asin-refine', category: 'etsy', defaultRoles: ['superadmin', 'listingadmin'] },
+  { id: 'EtsyApiConnect', name: 'Store Management', path: '/etsy/connect-stores', category: 'etsy', defaultRoles: ['superadmin', 'listingadmin'] },
 
   // ====== EBAY BUYING ======
   { id: 'EbayBuyingAccounts', name: 'Buying Accounts', path: '/ebay-buying/accounts', category: 'ebayBuying', defaultRoles: ['superadmin'] },

@@ -65,21 +65,22 @@ export const TRACKING_ID_UPLOADED_STYLES = {
 export const ETSY_ORDER_FULFILMENT_COLUMNS = [
   { key: 'rowNum', label: '#', minWidth: 76, align: 'center', section: 'index', editable: false },
   { key: 'storeName', label: 'Store', minWidth: 88, section: 'index', editable: false },
+  { key: 'entrySource', label: 'Source', minWidth: 120, align: 'center', section: 'index', inputType: 'select', options: ['', 'imported', 'manual'], optionLabels: { imported: 'Imported', manual: 'Manual' }, emptyLabel: 'Unknown', optionStyles: { imported: { bg: '#c9daf8', color: '#1967d2' }, manual: { bg: '#fff2cc', color: '#7f6000' } } },
   { key: 'dateSold', label: 'Date of Sold', minWidth: 128, align: 'center', section: 'etsy', inputType: 'date' },
   { key: 'etsyOrdersReceivedTime', label: 'Etsy Orders Recived Time', minWidth: 148, align: 'center', section: 'etsy', inputType: 'text' },
   { key: 'shipBy', label: 'Ship By', minWidth: 128, align: 'center', section: 'etsy', inputType: 'date' },
   { key: 'estimateEtsyDelivery', label: 'Estimate ETSY Delivery', minWidth: 148, align: 'center', section: 'etsy', inputType: 'date' },
   { key: 'productName', label: 'Product Name', minWidth: 200, section: 'etsy', inputType: 'text', multiline: true },
   { key: 'sku', label: 'SKU', minWidth: 96, section: 'etsy', inputType: 'text' },
-  { key: 'address', label: 'Address', minWidth: 280, section: 'etsy', inputType: 'text', multiline: true },
+  { key: 'address', label: 'Address', minWidth: 280, section: 'etsy', inputType: 'text', multiline: true, copyable: true },
   { key: 'zipCode', label: 'Zip Code', minWidth: 112, section: 'etsy', computed: true, copyable: true },
   { key: 'region', label: 'Region', minWidth: 96, align: 'center', section: 'etsy', inputType: 'select', options: ['', ...ETSY_REGION_OPTIONS] },
   { key: 'qty', label: 'Qty', minWidth: 72, align: 'center', section: 'etsy', inputType: 'number' },
   { key: 'note', label: 'Note', minWidth: 160, section: 'etsy', inputType: 'text', multiline: true },
   { key: 'messageUpdate', label: 'Message Update', minWidth: 260, section: 'etsy', inputType: 'select', options: ['', ...MESSAGE_UPDATE_OPTIONS], optionStyles: MESSAGE_UPDATE_STYLES },
   { key: 'soldFor', label: 'Etsy Price Details', minWidth: 132, align: 'right', section: 'etsy', inputType: 'text' },
-  { key: 'tax', label: 'Tax (₹)', minWidth: 96, align: 'right', section: 'etsy', inputType: 'text' },
-  { key: 'total', label: 'Total (₹)', minWidth: 96, align: 'right', section: 'etsy', inputType: 'text' },
+  { key: 'tax', label: 'Tax ($)', minWidth: 96, align: 'right', section: 'etsy', inputType: 'text', format: 'usd' },
+  { key: 'total', label: 'Total ($)', minWidth: 96, align: 'right', section: 'etsy', inputType: 'text', format: 'usd' },
   { key: 'etsyFee', label: 'Etsy fee (₹)', minWidth: 108, align: 'right', section: 'etsy', inputType: 'text' },
   { key: 'processingFee', label: 'Processing Fee (₹)', minWidth: 132, align: 'right', section: 'etsy', inputType: 'text' },
   { key: 'regulatoryOperatingFee', label: 'Regulatory Operating fee (₹)', minWidth: 180, align: 'right', section: 'etsy', inputType: 'text' },
@@ -200,7 +201,7 @@ export function buildVisibleEtsySectionHeaders(visibleColumns) {
 }
 
 export const ETSY_SECTION_HEADERS = [
-  { id: 'index', label: '', colspan: 2, bgcolor: '#e3f2fd' },
+  { id: 'index', label: '', colspan: 3, bgcolor: '#e3f2fd' },
   { id: 'etsy', label: 'Etsy', colspan: 25, bgcolor: '#fff3e0' },
   { id: 'amazon', label: 'Amazon', colspan: 13, bgcolor: '#e8f5e9' },
   { id: 'fulfilment', label: 'Fulfilment', colspan: 7, bgcolor: '#fce4ec' },
@@ -255,6 +256,7 @@ export function createEmptyEtsyOrderRow() {
     amazonOrderNumber: '',
     orderStatus: '',
     refund: '',
+    entrySource: '',
   };
 }
 

@@ -9,6 +9,7 @@ import { loadActiveSkuSet, precheckAsin, passesPrecheckFilters } from '../utils/
 import { callInternalApi } from './internalApiClient.js';
 import { checkUploadLimit, performFeedUpload } from './ebayFeedUpload.js';
 import { classifyEbayMotorsTitle } from './ebayMotorsClassifier.js';
+import { findBlockedBrand, loadPrecheckBlockList } from '../utils/precheckBlockedBrands.js';
 
 // eBay Feed API marketplace country codes (CsvStorage.country enum) —
 // region 'CA' in Sourcing Rules maps to 'Canada' here, matching how the
@@ -260,7 +261,8 @@ export async function runSourcingRule(rule, runDoc = null) {
     // instead of guessing.
     let pagesSearched = 0;
     let stopReason = 'target_reached';
-    const rejectCounts = { alreadyActive: 0, lowRating: 0, slowDelivery: 0, outOfStock: 0, excludedKeyword: 0, motorsIneligible: 0, precheckFailed: 0 };
+    const rejectCounts = { excludedBrand: 0, alreadyActive: 0, lowRating: 0, slowDelivery: 0, outOfStock: 0, excludedKeyword: 0, motorsIneligible: 0, precheckFailed: 0 };
+    const blockList = await loadPrecheckBlockList();
 
     for (let page = 1; page <= MAX_SEARCH_PAGES && qualifying.length < rule.targetAsinCount; page++) {
       await setStage(runDoc, 'collecting_asins', `Page ${page} — searching Amazon (${qualifying.length}/${rule.targetAsinCount} qualifying so far)`);
@@ -307,6 +309,10 @@ export async function runSourcingRule(rule, runDoc = null) {
           const generated = rowByAsin.get(asin);
           const row = await precheckAsin(asin, rule.region, template, activeSkuSet, generated);
           if (qualifyingAsinSet.has(asin)) return;
+          if (findBlockedBrand(row, blockList)) {
+            rejectCounts.excludedBrand += 1;
+            return;
+          }
           if (!passesPrecheckFilters(row, rule.filters)) {
             const f = rule.filters || {};
             if ((f.active ?? 'all') === 'inactive' && row.active === true) rejectCounts.alreadyActive += 1;

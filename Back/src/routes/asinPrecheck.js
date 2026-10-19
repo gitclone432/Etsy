@@ -5,9 +5,9 @@ import Seller from '../models/Seller.js';
 import User from '../models/User.js';
 import ListingTemplate from '../models/ListingTemplate.js';
 import AsinPrecheckLog from '../models/AsinPrecheckLog.js';
+import PrecheckBlockedAsin from '../models/PrecheckBlockedAsin.js';
 import ApiUsage from '../models/ApiUsage.js';
 import AiListingRun from '../models/AiListingRun.js';
-import PrecheckBlockedAsin from '../models/PrecheckBlockedAsin.js';
 import { fetchAmazonData, getTemplateOverlayFetchOptions } from '../utils/asinAutofill.js';
 import { generateSKUFromASIN } from '../utils/skuGenerator.js';
 import { getEffectiveTemplate } from '../utils/templateMerger.js';
@@ -15,6 +15,13 @@ import { classifyEbayMotorsTitle } from '../lib/ebayMotorsClassifier.js';
 import { searchAmazonAsins } from '../utils/amazonSearchScraper.js';
 import { getBaseSku, getPrecheckEnrichment, MARKETPLACE_TIMEZONES, loadActiveSkuSet } from '../utils/asinPrecheckCore.js';
 import { loadPrecheckBlockList, findBlockedBrand } from '../utils/precheckBlockedBrands.js';
+import {
+  PRECHECK_STATS_TIMEZONE,
+  resolvePrecheckDateWindow,
+  zonedMidnightUtc,
+  zonedDayEndUtc,
+  zonedDateTimeUtc
+} from '../utils/precheckDates.js';
 
 const router = express.Router();
 
@@ -146,39 +153,21 @@ async function runWithConcurrency(items, concurrency, worker, shouldContinue = (
   await Promise.allSettled(workers);
 }
 
-// ── Precheck-stats date helpers ──────────────────────────────────────────────
-// The stats page groups days in America/Los_Angeles (PDT/PST), so explicit
-// date filters must use that timezone's midnight as the day boundary. The
-// two-pass offset technique stays correct across the DST switch.
-const PRECHECK_STATS_TIMEZONE = 'America/Los_Angeles';
+// Precheck AI usage uses the same Pacific calendar days as Precheck Stats and
+// the exclusion history. Values that are not a plain date / wall-clock string
+// (an ISO instant, say) are taken as-is.
+const USAGE_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
-function zoneOffsetMs(date, timeZone) {
-  const dtf = new Intl.DateTimeFormat('en-US', {
-    timeZone, year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
-  });
-  const parts = Object.fromEntries(dtf.formatToParts(date).map((p) => [p.type, p.value]));
-  const asUtc = Date.UTC(
-    Number(parts.year), Number(parts.month) - 1, Number(parts.day),
-    parts.hour === '24' ? 0 : Number(parts.hour), Number(parts.minute), Number(parts.second)
-  );
-  return asUtc - date.getTime();
-}
+const parsePrecheckUsageDateBoundary = (dateValue, isEndOfDay = false) => {
+  if (!USAGE_DATE_RE.test(String(dateValue || ''))) return new Date(dateValue);
+  return isEndOfDay
+    ? zonedDayEndUtc(dateValue, PRECHECK_STATS_TIMEZONE)
+    : zonedMidnightUtc(dateValue, PRECHECK_STATS_TIMEZONE);
+};
 
-function zonedMidnightUtc(dateStr, timeZone) {
-  const naive = new Date(`${dateStr}T00:00:00Z`);
-  const offset = zoneOffsetMs(naive, timeZone);
-  let utc = new Date(naive.getTime() - offset);
-  const refined = zoneOffsetMs(utc, timeZone);
-  if (refined !== offset) utc = new Date(naive.getTime() - refined);
-  return utc;
-}
-
-function nextDateStr(dateStr) {
-  const d = new Date(`${dateStr}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + 1);
-  return d.toISOString().slice(0, 10);
-}
+const parsePrecheckUsageDateTime = (dateTimeValue) => (
+  zonedDateTimeUtc(dateTimeValue, PRECHECK_STATS_TIMEZONE) || new Date(dateTimeValue)
+);
 
 /**
  * GET /asin-precheck-stream
@@ -278,17 +267,32 @@ router.get('/asin-precheck-stream', requireAuthSSE, async (req, res) => {
       || 10;
     let completed = 0;
 
+    // Failed ASINs are swept again inside the SAME run, after a pause. A price
+    // miss rarely clears within the provider's own ~2s retry ladder, but often
+    // does 45s–2min later — the run does what users did by resubmitting.
+    // Gaps are only spent on ASINs that failed; the first pass is never delayed.
+    const SWEEP_GAPS_MS = String(process.env.ASIN_PRECHECK_SWEEP_GAPS_MS || '45000,120000')
+      .split(',')
+      .map(value => parseInt(value.trim(), 10))
+      .filter(value => Number.isFinite(value) && value > 0);
+
     const usageContext = buildAiUsageContext(req, templateId, sellerId);
 
     sendSse({
       type: 'started',
       total: asins.length,
       concurrency: Math.min(streamConcurrency, asins.length),
+      sweeps: SWEEP_GAPS_MS.length,
       ebayMotorsMode
     });
 
-    await runWithConcurrency(asins, streamConcurrency, async (asin) => {
+    let pending = [...asins];
+    let sweepIndex = 0;
+    const resolved = new Set();
+
+    const processAsin = async (asin) => {
       if (streamClosed) return;
+      const isFinalPass = sweepIndex >= SWEEP_GAPS_MS.length;
 
       const generated = rowByAsin.get(asin) || {
         sku: generateSKUFromASIN(asin),
@@ -322,11 +326,18 @@ router.get('/asin-precheck-stream', requireAuthSSE, async (req, res) => {
           });
         }
 
+        resolved.add(asin);
+
+        // Deeper brand detection and the buy-box seller are used for this check
+        // and the Brand column only; `amazonData.brand` (what listings are built
+        // from) is untouched. Title and description are never matched.
+        const detectedBrand = amazonData.detectedBrand || amazonData.rawData?.detectedBrand || amazonData.brand || '';
+        const soldBy = amazonData.soldBy || amazonData.rawData?.soldBy || '';
         // Checked before the eBay Motors classifier so a blocked ASIN never
         // spends an AI call. The client drops the row on this event; `brand`
         // is the excluded-list entry that matched, `matchedOn` whether it was
         // found in the brand or the seller ("Sold by") field.
-        const blocked = findBlockedBrand({ brand: amazonData.brand, soldBy: amazonData.soldBy }, blockList);
+        const blocked = findBlockedBrand({ brand: detectedBrand, soldBy }, blockList);
         if (blocked) {
           sendSse({
             type: 'item_blocked',
@@ -334,8 +345,8 @@ router.get('/asin-precheck-stream', requireAuthSSE, async (req, res) => {
             id: `asin-precheck-${asin}`,
             brand: blocked.display,
             matchedOn: blocked.field,
-            amazonBrand: amazonData.brand || '',
-            amazonSoldBy: amazonData.soldBy || '',
+            amazonBrand: detectedBrand,
+            amazonSoldBy: soldBy,
             title: amazonData.title || '',
             progress: ++completed,
             total: asins.length
@@ -348,8 +359,8 @@ router.get('/asin-precheck-stream', requireAuthSSE, async (req, res) => {
               asin,
               brand: blocked.display,
               matchedOn: blocked.field,
-              amazonBrand: amazonData.brand || '',
-              amazonSoldBy: amazonData.soldBy || '',
+              amazonBrand: detectedBrand,
+              amazonSoldBy: soldBy,
               title: amazonData.title || '',
               region: precheckRegion,
               user: req.user?.userId || null,
@@ -382,6 +393,7 @@ router.get('/asin-precheck-stream', requireAuthSSE, async (req, res) => {
             activeStatus: active ? 'active' : 'inactive',
             title: amazonData.title || '',
             image: Array.isArray(amazonData.images) ? amazonData.images[0] || '' : '',
+            brand: detectedBrand,
             ...enrichment,
             ebayMotorsMode,
             ebayMotorsEligible: ebayMotorsEligibility?.eligible ?? null,
@@ -401,6 +413,34 @@ router.get('/asin-precheck-stream', requireAuthSSE, async (req, res) => {
         console.error(`[ASIN Precheck] Error processing ${asin}:`, error.message);
         const active = activeSkuSet.has(generated.sku) || activeSkuSet.has(generated.baseSku);
 
+        // Not the last pass: keep the row alive for a later sweep instead of
+        // showing a failure the user would fix by resubmitting. It stays out of
+        // `completed` so progress counts resolved ASINs only. The scrape may
+        // have succeeded and a later step thrown, so undo the resolve.
+        if (!isFinalPass) {
+          resolved.delete(asin);
+          sendSse({
+            type: 'item',
+            item: {
+              id: `asin-precheck-${asin}`,
+              asin,
+              sku: generated.sku,
+              baseSku: generated.baseSku,
+              active,
+              activeStatus: active ? 'active' : 'inactive',
+              status: 'retrying',
+              progressStage: 'retrying',
+              retryPass: sweepIndex + 1,
+              retryPassesRemaining: SWEEP_GAPS_MS.length - sweepIndex,
+              errors: [error.message]
+            },
+            progress: completed,
+            total: asins.length
+          });
+          return;
+        }
+
+        resolved.add(asin);
         sendSse({
           type: 'item',
           item: {
@@ -412,6 +452,7 @@ router.get('/asin-precheck-stream', requireAuthSSE, async (req, res) => {
             activeStatus: active ? 'active' : 'inactive',
             title: '',
             image: '',
+            brand: '',
             price: '',
             priceNumber: null,
             availabilityStatus: '',
@@ -439,7 +480,32 @@ router.get('/asin-precheck-stream', requireAuthSSE, async (req, res) => {
           total: asins.length
         });
       }
-    }, () => !streamClosed);
+    };
+
+    // Pass 0 runs immediately over everything; each sweep waits, then retries
+    // only what is still unresolved. The 15s heartbeat keeps SSE alive.
+    for (sweepIndex = 0; sweepIndex <= SWEEP_GAPS_MS.length; sweepIndex += 1) {
+      if (streamClosed || pending.length === 0) break;
+
+      if (sweepIndex > 0) {
+        const gapMs = SWEEP_GAPS_MS[sweepIndex - 1];
+        console.log(`[ASIN Precheck] Sweep ${sweepIndex}/${SWEEP_GAPS_MS.length}: ${pending.length} unresolved, waiting ${gapMs}ms`);
+        sendSse({
+          type: 'sweep_waiting',
+          sweep: sweepIndex,
+          totalSweeps: SWEEP_GAPS_MS.length,
+          pending: pending.length,
+          waitMs: gapMs
+        });
+        await new Promise(resolve => setTimeout(resolve, gapMs));
+        if (streamClosed) break;
+        sendSse({ type: 'sweep_started', sweep: sweepIndex, totalSweeps: SWEEP_GAPS_MS.length, pending: pending.length });
+      }
+
+      const batch = pending;
+      await runWithConcurrency(batch, streamConcurrency, processAsin, () => !streamClosed);
+      pending = batch.filter(asin => !resolved.has(asin));
+    }
 
     sendSse({ type: 'complete', total: completed });
     sendDone();
@@ -468,26 +534,12 @@ router.get('/asin-precheck-stream', requireAuthSSE, async (req, res) => {
  */
 router.get('/precheck-stats', requireAuth, async (req, res) => {
   try {
-    const dateRe = /^\d{4}-\d{2}-\d{2}$/;
-    const startDateParam = dateRe.test(String(req.query.startDate || '')) ? String(req.query.startDate) : null;
-    const endDateParam = dateRe.test(String(req.query.endDate || '')) ? String(req.query.endDate) : startDateParam;
-
-    let match;
-    let rangeInfo;
-    if (startDateParam) {
-      const from = zonedMidnightUtc(startDateParam, PRECHECK_STATS_TIMEZONE);
-      const toExclusive = zonedMidnightUtc(nextDateStr(endDateParam), PRECHECK_STATS_TIMEZONE);
-      if (toExclusive <= from) {
-        return res.status(400).json({ error: 'endDate must be on or after startDate' });
-      }
-      match = { createdAt: { $gte: from, $lt: toExclusive } };
-      rangeInfo = { mode: 'range', startDate: startDateParam, endDate: endDateParam };
-    } else {
-      const days = Math.min(365, Math.max(1, Number.parseInt(req.query.days, 10) || 30));
-      const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-      match = { createdAt: { $gte: since } };
-      rangeInfo = { mode: 'rolling', days, since: since.toISOString() };
+    const window = resolvePrecheckDateWindow(req.query);
+    if (window.error) {
+      return res.status(400).json({ error: window.error });
     }
+    const match = { createdAt: window.match };
+    const rangeInfo = window.rangeInfo;
     if (['US', 'UK', 'CA', 'AU'].includes(req.query.region)) {
       match.region = req.query.region;
     }
@@ -501,7 +553,8 @@ router.get('/precheck-stats', requireAuth, async (req, res) => {
             asinCount: { $sum: '$asinCount' },
             batchCount: { $sum: 1 },
             availabilityRetryCount: { $sum: '$availabilityRetryCount' },
-            availabilityRetrySuccessCount: { $sum: '$availabilityRetrySuccessCount' }
+            availabilityRetrySuccessCount: { $sum: '$availabilityRetrySuccessCount' },
+            blockedCount: { $sum: { $ifNull: ['$blockedCount', 0] } }
           }
         }
       ]),
@@ -578,9 +631,10 @@ router.get('/precheck-stats', requireAuth, async (req, res) => {
             asinCount: totals[0].asinCount,
             batchCount: totals[0].batchCount,
             availabilityRetryCount: totals[0].availabilityRetryCount || 0,
-            availabilityRetrySuccessCount: totals[0].availabilityRetrySuccessCount || 0
+            availabilityRetrySuccessCount: totals[0].availabilityRetrySuccessCount || 0,
+            blockedCount: totals[0].blockedCount || 0
           }
-        : { asinCount: 0, batchCount: 0, availabilityRetryCount: 0, availabilityRetrySuccessCount: 0 },
+        : { asinCount: 0, batchCount: 0, availabilityRetryCount: 0, availabilityRetrySuccessCount: 0, blockedCount: 0 },
       byRegion: byRegion.map((row) => ({
         region: row._id,
         asinCount: row.asinCount,
@@ -666,12 +720,12 @@ router.get(['/api/precheck-usage-summary', '/precheck-usage-summary'], requireAu
 
     if (startDateTime || endDateTime) {
       match.timestamp = {};
-      if (startDateTime) match.timestamp.$gte = parseIstDateTime(startDateTime);
-      if (endDateTime) match.timestamp.$lte = parseIstDateTime(endDateTime);
+      if (startDateTime) match.timestamp.$gte = parsePrecheckUsageDateTime(startDateTime);
+      if (endDateTime) match.timestamp.$lte = parsePrecheckUsageDateTime(endDateTime);
     } else if (startDate || endDate) {
       match.timestamp = {};
-      if (startDate) match.timestamp.$gte = parseIstDateBoundary(startDate);
-      if (endDate) match.timestamp.$lte = parseIstDateBoundary(endDate, true);
+      if (startDate) match.timestamp.$gte = parsePrecheckUsageDateBoundary(startDate);
+      if (endDate) match.timestamp.$lte = parsePrecheckUsageDateBoundary(endDate, true);
     }
 
     if (userId && userId !== 'all' && mongoose.Types.ObjectId.isValid(userId)) {

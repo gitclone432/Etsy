@@ -27,6 +27,7 @@ import {
   Tooltip,
   Typography
 } from '@mui/material';
+import BlockIcon from '@mui/icons-material/Block';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import FindInPageIcon from '@mui/icons-material/FindInPage';
 import GroupsIcon from '@mui/icons-material/Groups';
@@ -35,6 +36,7 @@ import QueryStatsIcon from '@mui/icons-material/QueryStats';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import ReplayIcon from '@mui/icons-material/Replay';
 import api from '../../lib/api';
+import { pacificDaysAgoString, toPacificDateString } from '../../utils/pacificDate.js';
 import { BRAND_DARK, BRAND_YELLOW } from '../../constants/brandTheme.js';
 import { dashboardSignatureTokens } from '../../theme/appTheme.js';
 import {
@@ -68,14 +70,14 @@ const DAY_OPTIONS = [
   { value: 365, label: 'Last year' }
 ];
 
+// The endpoint reads dates as Pacific calendar days, so "today" must be the
+// Pacific date — the UTC date runs ahead of it by 7-8 hours.
 function todayDateStr() {
-  return new Date().toISOString().slice(0, 10);
+  return toPacificDateString();
 }
 
 function daysAgoDateStr(days) {
-  const d = new Date();
-  d.setDate(d.getDate() - days);
-  return d.toISOString().slice(0, 10);
+  return pacificDaysAgoString(days);
 }
 
 function MetricCard({ icon, label, value, hint, tone = 'default' }) {
@@ -324,6 +326,13 @@ export default function AsinPrecheckStatsPage() {
           value={formatNumber(retrySuccessCount)}
           hint={retryCount > 0 ? `${Math.round((retrySuccessCount / retryCount) * 100)}% success rate` : 'No retries needed'}
           tone={retrySuccessCount > 0 ? 'success' : 'default'}
+        />
+        <MetricCard
+          icon={<BlockIcon fontSize="small" />}
+          label="Excluded by Brand"
+          value={formatNumber(totals.blockedCount)}
+          hint="ASINs dropped for an excluded brand"
+          tone={totals.blockedCount > 0 ? 'warning' : 'default'}
         />
       </Stack>
 

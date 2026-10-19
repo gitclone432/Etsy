@@ -349,6 +349,8 @@ export async function precheckAsin(asin, region, template, activeSkuSet, generat
     active,
     title: amazonData.title || '',
     image: Array.isArray(amazonData.images) ? amazonData.images[0] || '' : '',
+    brand: amazonData.detectedBrand || amazonData.rawData?.detectedBrand || amazonData.brand || '',
+    soldBy: amazonData.soldBy || amazonData.rawData?.soldBy || '',
     ...enrichment,
   };
 }

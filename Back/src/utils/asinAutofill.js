@@ -410,6 +410,8 @@ export async function fetchAmazonData(asin, region = 'US', options = {}) {
       averageRating: scrapedData.averageRating || '',
       reviewCount: scrapedData.reviewCount || '',
       soldBy: soldBy || '',
+      // Deeper brand detection used only by the precheck's brand exclusion.
+      detectedBrand: scrapedData.detectedBrand || '',
       bestSellersRank: bestSellersRank || '',
       review: review || '',
       customerReviewCount: customerReviewCount || 0,

@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, Suspense } from 'react';
+import { useState, Suspense } from 'react';
 import { Link, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import {
   AppBar,
@@ -21,41 +21,26 @@ import {
   useMediaQuery,
 } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
-import { fetchSellersAll } from '../lib/sellersAllCache.js';
-import DiscountAlertsBell from '../components/DiscountAlertsBell.jsx';
-import TeamChatButton from '../components/TeamChatButton.jsx';
-import { connectSocket, disconnectSocket } from '../lib/socket.js';
 import MenuIcon from '@mui/icons-material/Menu';
-import Inventory2Icon from '@mui/icons-material/Inventory2';
 import AddCircleIcon from '@mui/icons-material/AddCircle';
 import InsightsIcon from '@mui/icons-material/Insights';
-import StoreIcon from '@mui/icons-material/Store';
-import AppsIcon from '@mui/icons-material/Apps';
 import StorefrontIcon from '@mui/icons-material/Storefront';
-import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import CategoryIcon from '@mui/icons-material/Category';
-import ListAltIcon from '@mui/icons-material/ListAlt';
 import ExpandMore from '@mui/icons-material/ExpandMore';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
-import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 import PersonOutlineIcon from '@mui/icons-material/PersonOutline';
 import SupervisorAccountIcon from '@mui/icons-material/SupervisorAccount';
-import TaskIcon from '@mui/icons-material/Task';
 import EditIcon from '@mui/icons-material/Edit';
 
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
-import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
 import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import CreditCardIcon from '@mui/icons-material/CreditCard';
 import MoneyOffIcon from '@mui/icons-material/MoneyOff';
 import LinkIcon from '@mui/icons-material/Link';
-import LightbulbIcon from '@mui/icons-material/Lightbulb';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import BarChartIcon from '@mui/icons-material/BarChart';
-import ChatIcon from '@mui/icons-material/Chat';
-import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import LayersIcon from '@mui/icons-material/Layers';
 import ViewColumnIcon from '@mui/icons-material/ViewColumn';
 import DescriptionIcon from '@mui/icons-material/Description';
@@ -69,8 +54,6 @@ import SecurityIcon from '@mui/icons-material/Security';
 import CircularProgress from '@mui/material/CircularProgress';
 import {
   AddListerPage,
-  AddSellerPage,
-  AddUserPage,
   ListingManagementPage,
   ManagePlatformsPage,
   ManageStoresPage,
@@ -85,8 +68,6 @@ import {
   AutoCompatReviewHistoryPage,
   AutoCompatSellerHistoryPage,
   FulfillmentDashboard,
-  AllOrdersSheetPage,
-  PriceChangeHistoryPage,
   AwaitingShipmentPage,
   AwaitingSheetPage,
   AmazonArrivalsPage,
@@ -96,14 +77,8 @@ import {
   AccountHealthReportPage,
   ComplianceBoardPage,
   ComplianceMonitoringPage,
-  PayoneerSheetPage,
-  BankAccountsPage,
-  TransactionPage,
-  ExtraExpensePage,
-  RevenueGrossNetPage,
   AboutMePage,
   WelcomePage,
-  EmployeeManagementPage,
   BuyerChatPage,
   FeedUploadPage,
   DirectListPage,
@@ -139,7 +114,6 @@ import {
   NegotiatedPricePoliciesPage,
   FeedUploadStatsPage,
   SellerUploadLimitsPage,
-  SalaryPage,
   SellerFundsPage,
   TransactionSummaryPage,
   FinancesTransactionsPage,
@@ -147,20 +121,10 @@ import {
   AdsAndMarketingPage,
   MarketingCampaignsPage,
   MarketingPromotionsPage,
-  FinanceCashflowPage,
-  DailyCardExpensesPage,
-  CardFundRequestsPage,
-  CardBalanceRecordsPage,
-  InvoiceUploadPage,
-  StoreSubscriptionPage,
-  StoreProfitabilityPage,
   CompatibilityDashboard,
   EditListingsDashboard,
   ConversationManagementPage,
   ManageAmazonAccountsPage,
-  InternalMessagesPage,
-  InternalMessagesAdminPage,
-  ManageCreditCardsPage,
   ExcludeOrderQtySkipsPage,
   CronJobsPage,
   InfraUsagePage,
@@ -175,14 +139,13 @@ import {
   EtsyOrderAnalyticsPage,
   EtsyDailyOrdersPage,
   EtsyProfitSheetPage,
+  AsinRefinePage,
+  EtsyApiConnectPage,
   AmazonPiSourceColumnsPage,
   AffiliateOrdersPage,
-  IdeasPage,
   OrderAnalyticsPage,
-  MicroOrdersPage,
   LegacyItemAnalyticsPage,
   CRPAnalyticsPage,
-  SellerAnalyticsPage,
   OrdersDepartmentDashboardPage,
   ManageTemplatesPage,
   TemplateListingsLabPage,
@@ -200,24 +163,17 @@ import {
   TemplateDatabasePage,
   CsvStoragePage,
   LeaveManagementPage,
-  LeaveAdminPage,
-  AttendanceAdminPage,
   AsinDirectoryPage,
   AsinListPage,
   CRPComparisonPage,
-  UserSellerAssignmentPage,
   UserPerformancePage,
   AiFitmentUsagePage,
   ListingStatsPage,
-  PageAccessManagementPage,
-  PageAccessAuditLogPage,
-  UserPasswordManagementPage,
   StoresPage,
   EtsyStoresPage,
   DescriptionTemplatesPage,
   UserCategoryTargetsPage,
   UserListingPerformancePage,
-  MeetingsPage,
 } from './adminLazyPages.jsx';
 import SettingsIcon from '@mui/icons-material/Settings';
 
@@ -254,19 +210,16 @@ const NavIcon = ({ icon: Icon, label, sidebarOpen }) => (
 
 // Map category IDs to their icons
 const categoryIcons = {
-  storeListings: Inventory2Icon,
-  orderFulfilment: LocalShippingIcon,
-  compatibility: TaskIcon,
-  listingResearch: ListAltIcon,
-  finance: AttachMoneyIcon,
-  compliance: AdminPanelSettingsIcon,
-  ebayParams: StoreIcon,
-  hrManagement: SupervisorAccountIcon,
-  others: AppsIcon,
   etsy: StorefrontIcon,
-  ebayBuying: ShoppingCartIcon,
   settingsSection: SettingsIcon,
 };
+
+const HIDDEN_SIDEBAR_PAGES = new Set([
+  'ExcludeOrderQtySkips',
+  'CronJobs',
+  'StoresPage',
+  'DescriptionTemplates',
+]);
 
 // Flyout menu styles (shared across all categories)
 const flyoutMenuSx = {
@@ -312,7 +265,6 @@ const COMPONENT_MAP = {
   'NegotiatedPricePolicies': NegotiatedPricePoliciesPage,
   'OrdersDashboard': OrdersDepartmentDashboardPage,
   'OrderAnalytics': OrderAnalyticsPage,
-  'MicroOrders': MicroOrdersPage,
   'LegacyItemAnalytics': LegacyItemAnalyticsPage,
   'CRPAnalytics': CRPAnalyticsPage,
   'CRPComparison': CRPComparisonPage,
@@ -354,22 +306,6 @@ const COMPONENT_MAP = {
   'CsvStorage': CsvStoragePage,
   'UserCategoryTargets': UserCategoryTargetsPage,
   'UserListingPerformance': UserListingPerformancePage,
-  'Payoneer': PayoneerSheetPage,
-  'BankAccounts': BankAccountsPage,
-  'Transactions': TransactionPage,
-  'ExtraExpenses': ExtraExpensePage,
-  'RevenueGrossNet': RevenueGrossNetPage,
-  'Cashflow': FinanceCashflowPage,
-  'DailyCardExpenses': DailyCardExpensesPage,
-  'CardFundRequests': CardFundRequestsPage,
-  'CardBalanceRecords': CardBalanceRecordsPage,
-  'InvoiceUpload': InvoiceUploadPage,
-  'Affiliate': StoreSubscriptionPage,
-  'StoreProfitability': StoreProfitabilityPage,
-  'Salary': SalaryPage,
-  'AllOrdersSheet': AllOrdersSheetPage,
-  'PriceChangeHistory': PriceChangeHistoryPage,
-  'SellerAnalytics': SellerAnalyticsPage,
   'ComplianceBoard': ComplianceBoardPage,
   'ComplianceMonitoring': ComplianceMonitoringPage,
   'Disputes': DisputesPage,
@@ -377,7 +313,6 @@ const COMPONENT_MAP = {
   'BuyerMessages': BuyerChatPage,
   'ConversationManagement': ConversationManagementPage,
   'AmazonAccounts': ManageAmazonAccountsPage,
-  'CreditCards': ManageCreditCardsPage,
   'ExcludeOrderQtySkips': ExcludeOrderQtySkipsPage,
   'CronJobs': CronJobsPage,
   'InfraUsage': InfraUsagePage,
@@ -417,19 +352,6 @@ const COMPONENT_MAP = {
   'FinancesTransactionSummary': TransactionSummaryPage,
   'FinancesTransactions': FinancesTransactionsPage,
   'FinancesPayoutGroups': FinancesPayoutGroupsPage,
-  'IdeasAndIssues': IdeasPage,
-  'TeamChat': InternalMessagesPage,
-  'LeaveAdmin': LeaveAdminPage,
-  'EmployeeManagement': EmployeeManagementPage,
-  'AddUser': AddUserPage,
-  'AddSeller': AddSellerPage,
-  'UserSellerAssignments': UserSellerAssignmentPage,
-  'Meetings': MeetingsPage,
-  'ViewAllMessages': InternalMessagesAdminPage,
-  'Attendance': AttendanceAdminPage,
-  'PageAccessManagement': PageAccessManagementPage,
-  'PageAccessAuditLog': PageAccessAuditLogPage,
-  'UserPasswordManagement': UserPasswordManagementPage,
   'ManageCategories': ManageCategoriesPage,
   'ManagePlatforms': ManagePlatformsPage,
   'ManageStores': ManageStoresPage,
@@ -445,6 +367,8 @@ const COMPONENT_MAP = {
   'EtsyOrderAnalytics': EtsyOrderAnalyticsPage,
   'EtsyDailyOrders': EtsyDailyOrdersPage,
   'EtsyProfitSheet': EtsyProfitSheetPage,
+  'AsinRefine': AsinRefinePage,
+  'EtsyApiConnect': EtsyApiConnectPage,
   'EtsyDashboard': EtsyDashboardPage,
   'EbayBuyingLab': EbayBuyingLabPage,
   'EbayBuyingAccounts': EbayBuyingAccountsPage,
@@ -464,17 +388,6 @@ export default function AdminLayout({ user, onLogout }) {
 
   const navigate = useNavigate();
   const location = useLocation();
-
-  // Warm seller list early so page mounts don't wait on the first /sellers/all.
-  useEffect(() => {
-    void fetchSellersAll(null).catch(() => {});
-  }, []);
-
-  // Team Chat real-time connection: lives for as long as the admin session does.
-  useEffect(() => {
-    connectSocket();
-    return () => disconnectSocket();
-  }, []);
 
   // Use the page access hook
   const { hasAccess, hasCategoryAccess, accessibleCategories, getAccessiblePages, getSubmenuPages, hasSubmenuAccess, isSuper } = usePageAccess(user);
@@ -615,7 +528,7 @@ export default function AdminLayout({ user, onLogout }) {
       .filter(([smId]) => hasSubmenuAccess(smId));
 
     // Pages that are NOT in any submenu
-    const directPages = pages.filter(p => !p.submenu);
+    const directPages = pages.filter(p => !p.submenu && !HIDDEN_SIDEBAR_PAGES.has(p.id));
 
     return (
       <span key={categoryId}>
@@ -787,54 +700,8 @@ export default function AdminLayout({ user, onLogout }) {
         <Divider sx={{ my: 1.5, mx: 2, borderColor: 'rgba(0, 0, 0, 0.08)' }} />
 
         {/* ====== DYNAMIC CATEGORY MENUS ====== */}
-        {renderCategoryMenu('storeListings')}
-        {renderCategoryMenu('orderFulfilment')}
-        {renderCategoryMenu('compatibility')}
-        {renderCategoryMenu('listingResearch')}
-        {renderCategoryMenu('finance')}
-        {renderCategoryMenu('compliance')}
-        {renderCategoryMenu('ebayParams')}
-        {renderCategoryMenu('hrManagement')}
-        {renderCategoryMenu('others')}
         {renderCategoryMenu('etsy')}
-        {renderCategoryMenu('ebayBuying')}
         {renderCategoryMenu('settingsSection')}
-
-        {/* Ideas & Issues - standalone for users who don't see it in HR category */}
-        {!hasAccess('IdeasAndIssues') && (
-          <ListItem disablePadding>
-            <ListItemButton
-              component={Link}
-              to="/admin/ideas"
-              onClick={() => setMobileOpen(false)}
-              selected={location.pathname === '/admin/ideas'}
-              sx={selectedMenuItemStyle}
-            >
-              <ListItemIcon>
-                <NavIcon icon={LightbulbIcon} label="Ideas & Issues Board" sidebarOpen={sidebarOpen} />
-              </ListItemIcon>
-              {sidebarOpen && <ListItemText primary="Ideas & Issues" />}
-            </ListItemButton>
-          </ListItem>
-        )}
-
-        {/* Team Chat - standalone for users who don't see it in HR category */}
-        {!hasAccess('TeamChat') && (
-          <ListItem disablePadding>
-            <ListItemButton
-              component={Link}
-              to="/admin/internal-messages"
-              onClick={() => setMobileOpen(false)}
-              selected={location.pathname === '/admin/internal-messages'}
-              sx={selectedMenuItemStyle}
-            >
-              <ListItemIcon>
-                <NavIcon icon={ChatIcon} label="Team Chat & Messaging" sidebarOpen={sidebarOpen} />
-              </ListItemIcon>
-              {sidebarOpen && <ListItemText primary="Team Chat" />}
-            </ListItemButton>
-          </ListItem>
-        )}
 
       </List>
     </div>
@@ -898,8 +765,6 @@ export default function AdminLayout({ user, onLogout }) {
               Grow Mentality Operations Hub
             </Typography>
           </Box>
-          <DiscountAlertsBell />
-          <TeamChatButton />
           <Box
             sx={{
               mr: 1,
@@ -997,24 +862,14 @@ export default function AdminLayout({ user, onLogout }) {
           {/* Welcome / Home page */}
           <Route path="/welcome" element={<WelcomePage user={user} />} />
 
-          {/* Ideas & Issues - accessible to ALL roles */}
-          <Route path="/ideas" element={<IdeasPage />} />
-
           {/* About Me */}
           {!isSuper && <Route path="/about-me" element={<AboutMePage />} />}
 
           {/* Leave Management - accessible to ALL authenticated users */}
           <Route path="/my-leaves" element={<LeaveManagementPage />} />
 
-          {/* Internal Messages - accessible to ALL authenticated users */}
-          <Route path="/internal-messages" element={<InternalMessagesPage />} />
-
           {/* User Performance - accessible to all */}
           <Route path="/user-performance" element={<UserPerformancePage />} />
-
-          <Route path="/credit-card-names" element={<Navigate to="/admin/credit-cards" replace />} />
-          <Route path="/affiliate-balance" element={<Navigate to="/admin/store-subscriptions" replace />} />
-          <Route path="/employee-details" element={<Navigate to="/employee-management" replace />} />
 
           {hasAccess('EbayAnalyticsHub') && (
             <>

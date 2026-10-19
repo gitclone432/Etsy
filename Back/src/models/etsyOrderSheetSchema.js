@@ -53,6 +53,7 @@ export function createEtsyOrderSheetSchema() {
     refund: { type: String, default: '' },
     rowOrder: { type: Number, default: 0, index: true },
     ambiguousDatesSwapped: { type: Boolean, default: false },
+    entrySource: { type: String, enum: ['imported', 'manual', ''], default: '' },
   }, { timestamps: true });
 
   schema.index({ store: 1, rowOrder: 1 });

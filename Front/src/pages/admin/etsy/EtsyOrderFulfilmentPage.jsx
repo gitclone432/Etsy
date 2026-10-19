@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, lazy, Suspense } from 'react';
 import AddIcon from '@mui/icons-material/Add';
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
+import ContentPasteIcon from '@mui/icons-material/ContentPaste';
 import DownloadIcon from '@mui/icons-material/Download';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import StorefrontIcon from '@mui/icons-material/Storefront';
@@ -53,6 +55,11 @@ import {
   buildVisibleEtsySectionHeaders,
 } from './etsyOrderFulfilmentColumns.js';
 import { ADDRESS_DERIVED_TRIGGER_FIELD, normalizeEtsyRegion } from '../../../utils/etsyAddressZip.js';
+import {
+  ETSY_AUTO_ADD_FIELD_MAP,
+  buildRowFromEtsyOrder,
+  parseEtsyOrderText,
+} from '../../../utils/etsyAutoAddParser.js';
 import {
   AMAZON_PRICING_TRIGGER_FIELDS,
   enrichOrderWithAmazonPricing,
@@ -137,6 +144,11 @@ function matchesRegionFilter(order, regionFilter) {
 function matchesValueFilter(order, field, expectedValue) {
   if (!field || !expectedValue) return true;
   return String(order?.[field] || '').trim() === expectedValue;
+}
+
+function matchesEntrySourceFilter(order, sourceFilter) {
+  if (!sourceFilter) return true;
+  return String(order.entrySource || '').trim().toLowerCase() === sourceFilter;
 }
 
 function parseSortableTime(value) {
@@ -324,6 +336,7 @@ export default function EtsyOrderFulfilmentPage({
   columnStorageKey = 'etsyOrderFulfilment.visibleColumns',
   hiddenColumnKeys = ETSY_ORDER_FULFILMENT_HIDDEN_COLUMNS,
   columnLabelOverrides = {},
+  columnFormatOverrides = {},
   apiBasePath = '/etsy/order-fulfilment',
   embedded = false,
   fixedVisibleColumns = null,
@@ -332,6 +345,7 @@ export default function EtsyOrderFulfilmentPage({
   allowCreate = true,
   allowDelete = true,
   showRegionFilter = true,
+  showAutoAdd = apiBasePath === '/etsy/order-fulfilment',
   dateFilterField = 'dateSold',
   dateFilterMode = 'range',
   singleDateLabel = 'Date',
@@ -367,6 +381,9 @@ export default function EtsyOrderFulfilmentPage({
   const [importOpen, setImportOpen] = useState(false);
   const [addRowStoreOpen, setAddRowStoreOpen] = useState(false);
   const [addRowStoreId, setAddRowStoreId] = useState('');
+  const [autoAddOpen, setAutoAddOpen] = useState(false);
+  const [autoAddStoreId, setAutoAddStoreId] = useState('');
+  const [autoAddText, setAutoAddText] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [selectedDate, setSelectedDate] = useState(initialSingleDate);
@@ -376,6 +393,7 @@ export default function EtsyOrderFulfilmentPage({
   const [secondaryDateTo, setSecondaryDateTo] = useState('');
   const [selectedRegion, setSelectedRegion] = useState('');
   const [selectedRemark, setSelectedRemark] = useState('');
+  const [selectedEntrySource, setSelectedEntrySource] = useState('');
   const [error, setError] = useState('');
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
   const [savingCells, setSavingCells] = useState({});
@@ -427,14 +445,22 @@ export default function EtsyOrderFulfilmentPage({
         const labeled = columnLabelOverrides[column.key]
           ? { ...column, label: columnLabelOverrides[column.key] }
           : column;
-        const withOptions = labeled.key === 'amazonAccount'
-          ? { ...labeled, options: ['', ...supplierAccountNames] }
+        const formatted = columnFormatOverrides[labeled.key]
+          ? { ...labeled, format: columnFormatOverrides[labeled.key] }
           : labeled;
+        const withOptions = formatted.key === 'amazonAccount'
+          ? { ...formatted, options: ['', ...supplierAccountNames] }
+          : formatted;
         return columnBehaviorOverrides[withOptions.key]
           ? { ...withOptions, ...columnBehaviorOverrides[withOptions.key] }
           : withOptions;
       }),
-    [supplierAccountNames, hiddenKeys, columnLabelOverrides, columnBehaviorOverrides]
+    [supplierAccountNames, hiddenKeys, columnLabelOverrides, columnFormatOverrides, columnBehaviorOverrides]
+  );
+
+  const usdFormatFields = useMemo(
+    () => new Set(fulfilmentColumns.filter((column) => column.format === 'usd').map((column) => column.key)),
+    [fulfilmentColumns]
   );
 
   const visibleColumnsSet = useMemo(() => new Set(effectiveVisibleColumns), [effectiveVisibleColumns]);
@@ -573,6 +599,7 @@ export default function EtsyOrderFulfilmentPage({
       }))
       && (!showRegionFilter || matchesRegionFilter(order, selectedRegion))
       && (!showRemarkFilter || matchesValueFilter(order, remarkFilterField, selectedRemark))
+      && matchesEntrySourceFilter(order, selectedEntrySource)
     )),
     [
       orders,
@@ -592,6 +619,7 @@ export default function EtsyOrderFulfilmentPage({
       showRemarkFilter,
       remarkFilterField,
       selectedRemark,
+      selectedEntrySource,
     ]
   );
 
@@ -686,20 +714,20 @@ export default function EtsyOrderFulfilmentPage({
     await loadOrders(selectedStoreId);
   }, [loadStores, loadOrders, selectedStoreId]);
 
-  const createOrderRow = async (storeId) => {
+  const createOrderRow = async (storeId, fields = {}) => {
     if (!storeId || storeId === ALL_STORES_VALUE) {
       setSnackbar({
         open: true,
         message: 'Select an Etsy store first (add stores in Settings → Etsy Stores)',
         severity: 'warning',
       });
-      return;
+      return false;
     }
 
     const store = stores.find((s) => String(s._id) === String(storeId));
     setCreating(true);
     try {
-      const { data } = await api.post(apiBasePath, { storeId });
+      const { data } = await api.post(apiBasePath, { ...fields, storeId });
       setOrders((prev) => [{
         ...data.order,
         storeName: data.order.storeName || storeNameById[String(data.order.store)] || store?.name || '',
@@ -707,12 +735,14 @@ export default function EtsyOrderFulfilmentPage({
       setPage(1);
       setAddRowStoreOpen(false);
       setSnackbar({ open: true, message: 'Row added', severity: 'success' });
+      return true;
     } catch (err) {
       setSnackbar({
         open: true,
         message: err.response?.data?.error || 'Failed to add row',
         severity: 'error',
       });
+      return false;
     } finally {
       setCreating(false);
     }
@@ -734,6 +764,51 @@ export default function EtsyOrderFulfilmentPage({
     }
     setAddRowStoreId(stores[0]?._id || '');
     setAddRowStoreOpen(true);
+  };
+
+  const handleAutoAdd = () => {
+    if (!allowCreate) return;
+    if (stores.length === 0) {
+      setSnackbar({
+        open: true,
+        message: 'Select an Etsy store first (add stores in Settings → Etsy Stores)',
+        severity: 'warning',
+      });
+      return;
+    }
+    setAutoAddStoreId(isSingleStoreSelected ? selectedStoreId : (stores[0]?._id || ''));
+    setAutoAddText('');
+    setAutoAddOpen(true);
+  };
+
+  const autoAddRow = useMemo(
+    () => buildRowFromEtsyOrder(parseEtsyOrderText(autoAddText)),
+    [autoAddText]
+  );
+
+  const handlePasteFromClipboard = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (!text.trim()) {
+        setSnackbar({ open: true, message: 'Clipboard is empty', severity: 'warning' });
+        return;
+      }
+      setAutoAddText(text);
+    } catch {
+      setSnackbar({
+        open: true,
+        message: 'Could not read clipboard — allow clipboard access or press Ctrl+V in the box',
+        severity: 'error',
+      });
+    }
+  };
+
+  const handleAutoAddSubmit = async () => {
+    const added = await createOrderRow(autoAddStoreId, autoAddRow);
+    if (added) {
+      setAutoAddOpen(false);
+      setAutoAddText('');
+    }
   };
 
   const handleDeleteRow = async (orderId) => {
@@ -764,12 +839,12 @@ export default function EtsyOrderFulfilmentPage({
     setCellSaving(orderId, field, true);
     try {
       const current = orders.find((row) => row._id === orderId);
-      const normalizedValue = ETSY_RUPEE_INPUT_FIELDS.has(field)
+      const normalizedValue = usdFormatFields.has(field) || AMAZON_USD_INPUT_FIELDS.has(field)
+        ? (String(value ?? '').trim() ? formatUsd(parseMoney(value)) : '')
+        : ETSY_RUPEE_INPUT_FIELDS.has(field)
         ? formatRupeeField(value, { zeroAsEmpty: ETSY_ZERO_AS_EMPTY_FIELDS.has(field) })
         : ETSY_ZERO_AS_EMPTY_FIELDS.has(field) && parseMoney(value) === 0
           ? ''
-        : AMAZON_USD_INPUT_FIELDS.has(field)
-          ? (String(value ?? '').trim() ? formatUsd(parseMoney(value)) : '')
         : field === 'exRate'
           ? formatExRate(value)
           : field === 'region'
@@ -809,7 +884,7 @@ export default function EtsyOrderFulfilmentPage({
     } finally {
       setCellSaving(orderId, field, false);
     }
-  }, [orders, storeNameById]);
+  }, [orders, storeNameById, apiBasePath, usdFormatFields]);
 
   const handleCopyCell = useCallback(async (text, successMessage) => {
     const value = String(text ?? '').trim();
@@ -817,9 +892,13 @@ export default function EtsyOrderFulfilmentPage({
 
     try {
       await navigator.clipboard.writeText(value);
+      const firstLine = value.split('\n')[0];
+      const preview = value.includes('\n') || firstLine.length > 48
+        ? `${firstLine.slice(0, 48)}…`
+        : firstLine;
       setSnackbar({
         open: true,
-        message: successMessage || (value.includes('\n') || value.length > 60 ? 'Copied to clipboard' : `Copied: ${value}`),
+        message: successMessage || `Copied: ${preview}`,
         severity: 'success',
       });
     } catch {
@@ -854,7 +933,8 @@ export default function EtsyOrderFulfilmentPage({
   const hasActiveFilters = hasActiveDateFilter
     || hasActiveSecondaryDateFilter
     || (showRegionFilter && Boolean(selectedRegion))
-    || (showRemarkFilter && Boolean(selectedRemark));
+    || (showRemarkFilter && Boolean(selectedRemark))
+    || Boolean(selectedEntrySource);
 
   const handleClearFilters = () => {
     setDateFrom('');
@@ -865,6 +945,7 @@ export default function EtsyOrderFulfilmentPage({
     setSecondaryDateTo('');
     setSelectedRegion('');
     setSelectedRemark('');
+    setSelectedEntrySource('');
   };
 
   const selectStorePrompt = allowImport || allowCreate
@@ -966,6 +1047,19 @@ export default function EtsyOrderFulfilmentPage({
                   sx={{ fontSize: { xs: '0.7rem', sm: '0.8rem' } }}
                 >
                   {isSmallMobile ? 'Add Row' : 'Add Row'}
+                </Button>
+              )}
+              {allowCreate && showAutoAdd && (
+                <Button
+                  variant="contained"
+                  color="secondary"
+                  size="small"
+                  startIcon={creating ? <CircularProgress size={16} color="inherit" /> : <AutoAwesomeIcon />}
+                  onClick={handleAutoAdd}
+                  disabled={creating || stores.length === 0}
+                  sx={{ fontSize: { xs: '0.7rem', sm: '0.8rem' } }}
+                >
+                  Auto Add
                 </Button>
               )}
             </Stack>
@@ -1101,7 +1195,10 @@ export default function EtsyOrderFulfilmentPage({
                   labelId="etsy-region-filter-label"
                   value={selectedRegion}
                   label="Region"
-                  onChange={(e) => setSelectedRegion(e.target.value)}
+                  onChange={(e) => {
+                    setSelectedRegion(e.target.value);
+                    setPage(1);
+                  }}
                   disabled={!selectedStoreId}
                 >
                   <MenuItem value="">All Regions</MenuItem>
@@ -1133,6 +1230,23 @@ export default function EtsyOrderFulfilmentPage({
                 </Select>
               </FormControl>
             )}
+            <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 150 } }}>
+              <InputLabel id="etsy-source-filter-label">Source</InputLabel>
+              <Select
+                labelId="etsy-source-filter-label"
+                value={selectedEntrySource}
+                label="Source"
+                onChange={(e) => {
+                  setSelectedEntrySource(e.target.value);
+                  setPage(1);
+                }}
+                disabled={!selectedStoreId}
+              >
+                <MenuItem value="">All sources</MenuItem>
+                <MenuItem value="imported">Imported</MenuItem>
+                <MenuItem value="manual">Manual</MenuItem>
+              </Select>
+            </FormControl>
 
             {hasActiveFilters && (
               <Button
@@ -1433,6 +1547,118 @@ export default function EtsyOrderFulfilmentPage({
                 onClick={() => createOrderRow(addRowStoreId)}
                 disabled={creating || !addRowStoreId}
                 startIcon={creating ? <CircularProgress size={16} color="inherit" /> : <AddIcon />}
+              >
+                Add Row
+              </Button>
+            </DialogActions>
+          </Dialog>
+        )}
+
+        {allowCreate && showAutoAdd && (
+          <Dialog
+            open={autoAddOpen}
+            onClose={creating ? undefined : () => setAutoAddOpen(false)}
+            maxWidth="md"
+            fullWidth
+          >
+            <DialogTitle>Auto Add from Etsy order</DialogTitle>
+            <DialogContent>
+              <Stack spacing={2} sx={{ mt: 1 }}>
+                <TextField
+                  select
+                  label="Etsy Store"
+                  value={autoAddStoreId}
+                  onChange={(e) => setAutoAddStoreId(e.target.value)}
+                  fullWidth
+                  size="small"
+                  disabled={creating}
+                >
+                  {stores.map((store) => (
+                    <MenuItem key={store._id} value={store._id}>
+                      {store.name}
+                    </MenuItem>
+                  ))}
+                </TextField>
+                <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems="stretch">
+                  <Stack spacing={1} sx={{ flex: 1, minWidth: 0 }}>
+                  <Stack direction="row" spacing={1}>
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      startIcon={<ContentPasteIcon />}
+                      onClick={handlePasteFromClipboard}
+                      disabled={creating}
+                    >
+                      Paste
+                    </Button>
+                    <Button
+                      size="small"
+                      onClick={() => setAutoAddText('')}
+                      disabled={creating || !autoAddText}
+                    >
+                      Clear
+                    </Button>
+                  </Stack>
+                  <TextField
+                    label="Paste Etsy order details"
+                    placeholder={'Order ID: 4174671461\nOrder date: 2026-09-16\nShip by: 2026-09-18\n...'}
+                    value={autoAddText}
+                    onChange={(e) => setAutoAddText(e.target.value)}
+                    multiline
+                    minRows={14}
+                    maxRows={22}
+                    fullWidth
+                    autoFocus
+                    disabled={creating}
+                    sx={{ '& textarea': { fontFamily: 'monospace', fontSize: '0.8rem' } }}
+                  />
+                  </Stack>
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography variant="subtitle2" sx={{ mb: 1 }}>Will fill these columns</Typography>
+                    <Stack spacing={0.75}>
+                      {ETSY_AUTO_ADD_FIELD_MAP.map(({ field, fieldLabel, sourceLabel }) => (
+                        <Box
+                          key={field}
+                          sx={{
+                            display: 'grid',
+                            gridTemplateColumns: '140px 1fr',
+                            gap: 1,
+                            alignItems: 'baseline',
+                            py: 0.5,
+                            borderBottom: '1px solid',
+                            borderColor: 'divider',
+                          }}
+                        >
+                          <Typography variant="caption" color="text.secondary">
+                            {fieldLabel}
+                            <Box component="span" sx={{ display: 'block', opacity: 0.7 }}>from {sourceLabel}</Box>
+                          </Typography>
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              fontWeight: autoAddRow[field] ? 600 : 400,
+                              wordBreak: 'break-word',
+                              whiteSpace: 'pre-line',
+                            }}
+                            color={autoAddRow[field] ? 'text.primary' : 'text.disabled'}
+                          >
+                            {autoAddRow[field] || '—'}
+                          </Typography>
+                        </Box>
+                      ))}
+                    </Stack>
+                  </Box>
+                </Stack>
+              </Stack>
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setAutoAddOpen(false)} disabled={creating}>Cancel</Button>
+              <Button
+                variant="contained"
+                color="secondary"
+                onClick={handleAutoAddSubmit}
+                disabled={creating || !autoAddStoreId || Object.keys(autoAddRow).length === 0}
+                startIcon={creating ? <CircularProgress size={16} color="inherit" /> : <AutoAwesomeIcon />}
               >
                 Add Row
               </Button>

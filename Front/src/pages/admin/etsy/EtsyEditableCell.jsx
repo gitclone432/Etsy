@@ -56,13 +56,6 @@ function normalizeDisplayValue(value) {
   return String(value);
 }
 
-function getFirstNonEmptyLine(value) {
-  return String(value ?? '')
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .find(Boolean) || '';
-}
-
 function parseUsdNumber(value) {
   const cleaned = String(value ?? '').replace(/[^\d.-]/g, '');
   if (!cleaned || cleaned === '-' || cleaned === '.') return null;
@@ -82,12 +75,25 @@ function formatUsdCellDisplay(value) {
   return `$${num.toFixed(2)}`;
 }
 
+function formatInrCellDisplay(value) {
+  const num = parseUsdNumber(value);
+  if (num == null) return '';
+  return `₹ ${num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
 function signedMoneyColor(value) {
   const cleaned = String(value ?? '').replace(/[^\d.-]/g, '');
   if (!cleaned || cleaned === '-' || cleaned === '.') return null;
   const num = Number.parseFloat(cleaned);
   if (!Number.isFinite(num) || num === 0) return null;
   return num > 0 ? '#2e7d32' : '#c62828';
+}
+
+function getFirstNonEmptyLine(value) {
+  return String(value ?? '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find(Boolean) || '';
 }
 
 function getDisplayLabel(value, column) {
@@ -101,6 +107,9 @@ function getDisplayLabel(value, column) {
   }
   if (column.format === 'usd') {
     return formatUsdCellDisplay(text) || '-';
+  }
+  if (column.format === 'inr') {
+    return formatInrCellDisplay(text) || '-';
   }
   if (column.optionLabels?.[text]) return column.optionLabels[text];
   return text;
@@ -284,12 +293,11 @@ const EtsyEditableCell = memo(function EtsyEditableCell({
     const canCopy = Boolean((column.copyable || isAddressColumn) && rawText && onCopy);
     const buyerName = column.key === 'address' ? getFirstNonEmptyLine(rawText) : '';
     const canCopyBuyerName = Boolean(buyerName) && onCopy;
-
     return (
       <Box
         sx={{
           display: 'flex',
-          alignItems: 'center',
+          alignItems: column.multiline ? 'flex-start' : 'center',
           justifyContent,
           gap: 0.25,
           minWidth: 0,
@@ -376,7 +384,7 @@ const EtsyEditableCell = memo(function EtsyEditableCell({
                 <ContentCopyIcon sx={{ fontSize: compact ? 12 : 14 }} />
               </IconButton>
             </span>
-          </Tooltip>
+            </Tooltip>
         )}
         {canCopyBuyerName && (
           <Tooltip title="Copy buyer name">

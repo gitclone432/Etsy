@@ -20,8 +20,6 @@ import SupervisorAccountIcon from '@mui/icons-material/SupervisorAccount';
 import AppsIcon from '@mui/icons-material/Apps';
 import PersonIcon from '@mui/icons-material/Person';
 import EventAvailableIcon from '@mui/icons-material/EventAvailable';
-import ChatIcon from '@mui/icons-material/Chat';
-import LightbulbIcon from '@mui/icons-material/Lightbulb';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import LayersIcon from '@mui/icons-material/Layers';
 import Inventory2Icon from '@mui/icons-material/Inventory2';
@@ -87,11 +85,29 @@ const ROLE_LABELS = {
   seller:              'Seller',
 };
 
+const HIDDEN_HOME_CATEGORIES = new Set([
+  'storeListings',
+  'orderFulfilment',
+  'compatibility',
+  'listingResearch',
+  'finance',
+  'compliance',
+  'ebayParams',
+  'hrManagement',
+  'others',
+  'ebayBuying',
+]);
+
+const HIDDEN_HOME_PAGES = new Set([
+  'ExcludeOrderQtySkips',
+  'CronJobs',
+  'StoresPage',
+  'DescriptionTemplates',
+]);
+
 const QUICK_LINKS = [
   { label: 'About Me',      path: '/admin/about-me',           icon: PersonIcon,         color: '#8b5cf6' },
   { label: 'My Leaves',     path: '/admin/my-leaves',          icon: EventAvailableIcon,  color: '#10b981' },
-  { label: 'Team Chat',     path: '/admin/internal-messages',  icon: ChatIcon,            color: '#3b82f6' },
-  { label: 'Ideas & Issues',path: '/admin/ideas',              icon: LightbulbIcon,       color: '#f59e0b' },
 ];
 
 function getTimeGreeting() {
@@ -111,8 +127,14 @@ export default function WelcomePage({ user }) {
     isSuper,
   } = usePageAccess(user);
 
+  const visibleCategories = accessibleCategories.filter((catId) => !HIDDEN_HOME_CATEGORIES.has(catId));
+
   const totalPageCount = useMemo(
-    () => PAGE_REGISTRY.filter(p => hasAccess(p.id)).length,
+    () => PAGE_REGISTRY.filter((p) => (
+      hasAccess(p.id)
+      && !HIDDEN_HOME_CATEGORIES.has(p.category)
+      && !HIDDEN_HOME_PAGES.has(p.id)
+    )).length,
     [hasAccess],
   );
 
@@ -197,7 +219,7 @@ export default function WelcomePage({ user }) {
           {/* Stats row */}
           <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
             <StatPill value={totalPageCount} label={totalPageCount === 1 ? 'Page' : 'Pages'} />
-            <StatPill value={accessibleCategories.length} label={accessibleCategories.length === 1 ? 'Category' : 'Categories'} />
+            <StatPill value={visibleCategories.length} label={visibleCategories.length === 1 ? 'Category' : 'Categories'} />
             <StatPill value={new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} label="Today" />
           </Box>
         </Box>
@@ -260,7 +282,7 @@ export default function WelcomePage({ user }) {
       )}
 
       {/* ─── CATEGORY CARDS ──────────────────────────────────────────────── */}
-      {accessibleCategories.length === 0 ? (
+      {visibleCategories.length === 0 ? (
         <Paper
           elevation={0}
           sx={{
@@ -285,11 +307,11 @@ export default function WelcomePage({ user }) {
         <>
           <SectionLabel>Your Pages</SectionLabel>
           <Grid container spacing={2.5}>
-            {accessibleCategories.map(catId => {
+            {visibleCategories.map(catId => {
               const category = PAGE_CATEGORIES[catId];
               const IconComponent = CATEGORY_ICONS[catId] || AppsIcon;
               const c = CATEGORY_STYLES[catId] || CATEGORY_STYLES.others;
-              const pages = getAccessiblePages(catId);
+              const pages = getAccessiblePages(catId).filter((p) => !HIDDEN_HOME_PAGES.has(p.id));
               const directPages = pages.filter(p => !p.submenu);
               const submenuIds = [...new Set(pages.filter(p => p.submenu).map(p => p.submenu))];
 
@@ -360,7 +382,7 @@ export default function WelcomePage({ user }) {
                       {submenuIds.map(smId => {
                         if (!hasSubmenuAccess(smId)) return null;
                         const sm = SUBMENUS[smId];
-                        const smPages = getSubmenuPages(smId);
+                        const smPages = getSubmenuPages(smId).filter((p) => !HIDDEN_HOME_PAGES.has(p.id));
                         return (
                           <Box key={smId} sx={{ mt: 0.8 }}>
                             <Typography

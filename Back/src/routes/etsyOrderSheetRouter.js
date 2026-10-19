@@ -55,11 +55,22 @@ export const ETSY_ORDER_FULFILMENT_FIELDS = [
   'amazonOrderNumber',
   'orderStatus',
   'refund',
+  'entrySource',
 ];
 
 const IDENTIFIER_FIELDS = new Set(['trackingId', 'amazonOrderNumber']);
 
+const ENTRY_SOURCE_VALUES = new Set(['imported', 'manual']);
+
+function normalizeEntrySource(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  return ENTRY_SOURCE_VALUES.has(normalized) ? normalized : '';
+}
+
 function normalizeFieldValue(key, value) {
+  if (key === 'entrySource') {
+    return normalizeEntrySource(value);
+  }
   const str = value == null ? '' : String(value);
   if (ETSY_RUPEE_INPUT_FIELDS.has(key)) {
     return formatRupeeField(str, { zeroAsEmpty: ETSY_ZERO_AS_EMPTY_FIELDS.has(key) });
@@ -162,6 +173,57 @@ function sortOrdersForDisplay(orders = []) {
   });
 }
 
+async function backfillMissingEntrySources(Model, filter = {}) {
+  const missing = await Model.find({
+    ...filter,
+    $or: [
+      { entrySource: { $exists: false } },
+      { entrySource: null },
+      { entrySource: '' },
+    ],
+  }).select('_id store createdAt').sort({ store: 1, createdAt: 1 }).lean();
+
+  if (missing.length === 0) return;
+
+  const importedIds = [];
+  const manualIds = [];
+
+  const flushCluster = (cluster) => {
+    if (!cluster.length) return;
+    const ids = cluster.map((row) => row._id);
+    if (cluster.length >= 2) importedIds.push(...ids);
+    else manualIds.push(...ids);
+  };
+
+  let cluster = [];
+  for (const row of missing) {
+    const last = cluster[cluster.length - 1];
+    const sameStore = last && String(last.store) === String(row.store);
+    const close = last && (new Date(row.createdAt) - new Date(last.createdAt) <= 2500);
+    if (last && sameStore && close) {
+      cluster.push(row);
+    } else {
+      flushCluster(cluster);
+      cluster = [row];
+    }
+  }
+  flushCluster(cluster);
+
+  const chunkSize = 1000;
+  for (let i = 0; i < importedIds.length; i += chunkSize) {
+    await Model.updateMany(
+      { _id: { $in: importedIds.slice(i, i + chunkSize) } },
+      { $set: { entrySource: 'imported' } }
+    );
+  }
+  for (let i = 0; i < manualIds.length; i += chunkSize) {
+    await Model.updateMany(
+      { _id: { $in: manualIds.slice(i, i + chunkSize) } },
+      { $set: { entrySource: 'manual' } }
+    );
+  }
+}
+
 function assignImportRowOrders(rows, { mode, maxRowOrder = -1 }) {
   return rows.map((row, index) => ({
     ...row,
@@ -197,6 +259,8 @@ export function createEtsyOrderSheetRouter({ Model, pages, logLabel }) {
         filter.store = storeId;
       }
 
+      await backfillMissingEntrySources(Model, filter);
+
       const orders = await Model.find(filter)
         .populate('store', 'name')
         .lean();
@@ -221,6 +285,7 @@ export function createEtsyOrderSheetRouter({ Model, pages, logLabel }) {
         store: store._id,
         rowOrder: (await getMaxRowOrder(store._id)) + 1,
         ambiguousDatesSwapped: true,
+        entrySource: 'manual',
       };
       const order = await Model.create(enrichOrderRow(payload));
       res.status(201).json({
@@ -267,7 +332,12 @@ export function createEtsyOrderSheetRouter({ Model, pages, logLabel }) {
       const maxRowOrder = mode === 'replace' ? -1 : await getMaxRowOrder(store._id);
 
       const docs = assignImportRowOrders(
-        prepared.map((row) => ({ ...row, store: store._id, ambiguousDatesSwapped: true })),
+        prepared.map((row) => ({
+          ...row,
+          store: store._id,
+          ambiguousDatesSwapped: true,
+          entrySource: 'imported',
+        })),
         { mode, maxRowOrder }
       );
       const chunkSize = 500;

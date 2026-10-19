@@ -20,10 +20,11 @@ export async function connectToDatabase() {
         socketTimeoutMS: 45000,
         maxPoolSize: 20,
     });
-    await reconcileModelIndexes();
-    
-    // Initialize GridFS for file storage
-    initGridFS();
+    const localEtsyOnly = String(process.env.RUNNER_ID || 'local').trim().toLowerCase() === 'local';
+    if (!localEtsyOnly) {
+      await reconcileModelIndexes();
+      initGridFS();
+    }
     
     return mongoose.connection;
 }

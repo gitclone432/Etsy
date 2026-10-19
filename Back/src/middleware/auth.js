@@ -84,6 +84,7 @@ export const PAGE_DEFAULT_ROLES = {
   'AmazonSearch': ['superadmin', 'listingadmin', 'lister', 'advancelister', 'trainee'],
   'SellerTemplatesLab': ['superadmin', 'lister', 'advancelister', 'trainee'],
   'AsinPrecheck': ['superadmin', 'lister', 'advancelister', 'trainee'],
+  'AsinPrecheckExclusions': ['superadmin', 'lister', 'advancelister', 'trainee'],
   'AsinPrecheckStats': ['superadmin'],
   'AsinPrecheckExclusions': ['superadmin', 'lister', 'advancelister', 'trainee'],
   'SourcingRules': ['superadmin', 'listingadmin'],
@@ -195,6 +196,9 @@ export const PAGE_DEFAULT_ROLES = {
   'EtsyOrderAnalytics': ['superadmin', 'listingadmin'],
   'EtsyProfitSheet': ['superadmin', 'listingadmin'],
   'EtsyDashboard': ['superadmin', 'listingadmin'],
+  'EtsyDailyOrders': ['superadmin', 'listingadmin'],
+  'AsinRefine': ['superadmin', 'listingadmin'],
+  'EtsyApiConnect': ['superadmin', 'listingadmin'],
 
   // eBay Buying
   'EbayBuyingAccounts': ['superadmin'],

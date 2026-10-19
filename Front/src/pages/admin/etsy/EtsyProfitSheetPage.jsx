@@ -56,6 +56,12 @@ const PROFIT_SHEET_COLUMN_LABELS = {
   cardNo: 'Credit Card',
 };
 
+const PROFIT_SHEET_COLUMN_FORMATS = {
+  soldFor: 'usd',
+  tax: 'inr',
+  total: 'inr',
+};
+
 export default function EtsyProfitSheetPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const tab = searchParams.get('view') === 'monthly' ? 'monthly' : 'sheet';
@@ -100,6 +106,7 @@ export default function EtsyProfitSheetPage() {
             columnStorageKey="etsyProfitSheet.visibleColumns"
             hiddenColumnKeys={PROFIT_SHEET_HIDDEN_COLUMNS}
             columnLabelOverrides={PROFIT_SHEET_COLUMN_LABELS}
+            columnFormatOverrides={PROFIT_SHEET_COLUMN_FORMATS}
             apiBasePath="/etsy/profit-sheet"
             embedded
           />

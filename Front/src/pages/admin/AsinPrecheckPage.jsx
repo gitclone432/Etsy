@@ -34,6 +34,8 @@ import {
   Typography
 } from '@mui/material';
 import {
+  Autorenew as RetryIcon,
+  Block as BlockIcon,
   CheckCircle as CheckCircleIcon,
   ContentCopy as CopyIcon,
   Delete as DeleteIcon,
@@ -106,10 +108,14 @@ const getSavedPrecheckPreferences = () => {
 const getSellerDisplayName = (seller) =>
   seller?.user?.username || seller?.user?.email || seller?.name || 'Unknown Seller';
 
-const isRowComplete = (row) => row.status !== 'loading' && row.status !== 'error';
+// 'retrying' is a row the server parked for a later sweep in the same run. It
+// renders exactly like 'loading' — the work is still in progress.
+const isRowPending = (row) => row.status === 'loading' || row.status === 'retrying';
+
+const isRowComplete = (row) => !isRowPending(row) && row.status !== 'error';
 
 const formatDeliveryLabel = (row) => {
-  if (row.status === 'loading') return 'Checking';
+  if (isRowPending(row)) return 'Checking';
   if (row.deliveryDays === 0) return 'Today';
   if (row.deliveryDays === 1) return '1 day';
   if (row.deliveryDays != null) return `${row.deliveryDays} days`;
@@ -119,7 +125,7 @@ const formatDeliveryLabel = (row) => {
 };
 
 const getDeliveryTooltip = (row) => {
-  if (row.status === 'loading') return 'Checking delivery date';
+  if (isRowPending(row)) return 'Checking delivery date';
   if (row.deliveryDate) {
     return row.shippingTime ? `${row.deliveryDate} (${row.shippingTime})` : row.deliveryDate;
   }
@@ -167,10 +173,28 @@ export default function AsinPrecheckPage() {
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [progress, setProgress] = useState({ current: 0, total: 0 });
   const [blockedItems, setBlockedItems] = useState([]);
+  const [blockedDialogOpen, setBlockedDialogOpen] = useState(false);
   const [blockedBrandsManagerOpen, setBlockedBrandsManagerOpen] = useState(false);
   const [imagePreview, setImagePreview] = useState(null);
   const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
   const [listingStatusChoiceOpen, setListingStatusChoiceOpen] = useState(false);
+  // Non-null while the run is between retry sweeps or inside one; drives the
+  // banner that explains the pause (ASIN_PRECHECK_SWEEP_GAPS_MS on the server).
+  const [sweepStatus, setSweepStatus] = useState(null);
+  const [totalSweeps, setTotalSweeps] = useState(0);
+  const [sweepSecondsLeft, setSweepSecondsLeft] = useState(0);
+
+  useEffect(() => {
+    const waitingUntil = sweepStatus?.waitingUntil;
+    if (!waitingUntil) {
+      setSweepSecondsLeft(0);
+      return undefined;
+    }
+    const tick = () => setSweepSecondsLeft(Math.max(0, Math.ceil((waitingUntil - Date.now()) / 1000)));
+    tick();
+    const timer = setInterval(tick, 1000);
+    return () => clearInterval(timer);
+  }, [sweepStatus?.waitingUntil]);
   const [filters, setFilters] = useState(savedPreferences.filters);
   const [keywordDraft, setKeywordDraft] = useState(savedPreferences.filters.keyword || '');
   const [keywordIntent, setKeywordIntent] = useState('included');
@@ -300,7 +324,7 @@ export default function AsinPrecheckPage() {
     return sourceRows.filter(row => {
       if (hideExcluded && row.intent === 'excluded') return false;
       if (hasIncludedRows && row.intent !== 'included') return false;
-      if (keyword && !String(row.title || '').toLowerCase().includes(keyword)) return false;
+      if (keyword && ![row.title, row.brand].some(value => String(value || '').toLowerCase().includes(keyword))) return false;
       if (Number.isFinite(priceFrom) && String(options.priceFrom ?? filters.priceFrom) !== '' && !(Number(row.priceNumber) >= priceFrom)) return false;
       if (Number.isFinite(priceTo) && String(options.priceTo ?? filters.priceTo) !== '' && !(Number(row.priceNumber) <= priceTo)) return false;
       if (Number.isFinite(minRating) && String(options.minRating ?? filters.minRating) !== '' && !(Number(row.rating) >= minRating)) return false;
@@ -330,18 +354,37 @@ export default function AsinPrecheckPage() {
   );
 
   const completedRows = useMemo(
-    () => rows.filter(row => row.status !== 'loading'),
+    () => rows.filter(row => !isRowPending(row)),
     [rows]
   );
 
   const visibleInactiveRows = useMemo(
-    () => visibleRows.filter(row => row.status !== 'loading' && !row.active),
+    () => visibleRows.filter(row => !isRowPending(row) && !row.active),
     [visibleRows]
   );
 
   const visibleActiveCount = useMemo(
-    () => visibleRows.filter(row => row.status !== 'loading' && row.active).length,
+    () => visibleRows.filter(row => !isRowPending(row) && row.active).length,
     [visibleRows]
+  );
+
+  // Blocked ASINs grouped by the exclusion-list entry that matched, most
+  // frequent first.
+  const blockedByBrand = useMemo(() => {
+    const groups = new Map();
+    for (const item of blockedItems) {
+      const key = item.brand || 'Unknown';
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(item);
+    }
+    return [...groups.entries()]
+      .map(([brand, items]) => ({ brand, items }))
+      .sort((a, b) => b.items.length - a.items.length || a.brand.localeCompare(b.brand));
+  }, [blockedItems]);
+
+  const sweepPending = useMemo(
+    () => rows.filter(row => row.status === 'retrying').length,
+    [rows]
   );
 
   const includedCount = useMemo(
@@ -429,6 +472,7 @@ export default function AsinPrecheckPage() {
       active: false,
       title: '',
       image: '',
+      brand: '',
       price: '',
       priceNumber: null,
       rating: null,
@@ -456,7 +500,10 @@ export default function AsinPrecheckPage() {
 
     setRows(prev => [...prev, ...initialRows]);
     setProgress({ current: 0, total: asinsToCheck.length });
+    setSweepStatus(null);
+    setTotalSweeps(0);
     setBlockedItems([]);
+    setBlockedDialogOpen(false);
     setRunning(true);
     setSetupOpen(false);
     setAsinInput('');
@@ -469,13 +516,25 @@ export default function AsinPrecheckPage() {
     const sseUrl = `/template-listings/asin-precheck-stream?templateId=${templateId}&sellerId=${sellerId}&asins=${encodeURIComponent(asinParam)}&region=${encodeURIComponent(region)}&ebayMotorsMode=${ebayMotorsMode ? 'true' : 'false'}&token=${encodeURIComponent(authToken)}`;
     const eventSource = new EventSource(api.defaults.baseURL + sseUrl);
 
+    // Collected here rather than in state so the stream handlers don't race
+    // React's batching; published once at the end of the run.
+    const blockedThisRun = [];
+    const publishBlocked = () => {
+      if (blockedThisRun.length > 0) {
+        setBlockedItems([...blockedThisRun]);
+        setBlockedDialogOpen(true);
+      }
+    };
+
     eventSource.onmessage = (event) => {
       if (event.data === '[DONE]') {
+        setSweepStatus(null);
         eventSource.close();
         if (window._asinPrecheckEventSource === eventSource) {
           window._asinPrecheckEventSource = null;
         }
         setRunning(false);
+        publishBlocked();
         return;
       }
 
@@ -485,8 +544,25 @@ export default function AsinPrecheckPage() {
         switch (message.type) {
           case 'started':
             setProgress({ current: 0, total: message.total || asinsToCheck.length });
+            setTotalSweeps(message.sweeps || 0);
             break;
           case 'ping':
+            break;
+          case 'sweep_waiting':
+            setSweepStatus({
+              pending: message.pending || 0,
+              sweep: message.sweep || 0,
+              totalSweeps: message.totalSweeps || 0,
+              waitingUntil: Date.now() + (message.waitMs || 0)
+            });
+            break;
+          case 'sweep_started':
+            setSweepStatus({
+              pending: message.pending || 0,
+              sweep: message.sweep || 0,
+              totalSweeps: message.totalSweeps || 0,
+              waitingUntil: null
+            });
             break;
           case 'item_started':
             setRows(prev => prev.map(row => (
@@ -494,6 +570,18 @@ export default function AsinPrecheckPage() {
                 ? { ...row, progressStage: message.progressStage || 'fetching' }
                 : row
             )));
+            break;
+          case 'item_blocked':
+            blockedThisRun.push({
+              asin: message.asin,
+              brand: message.brand || '',
+              matchedOn: message.matchedOn || 'brand',
+              amazonBrand: message.amazonBrand || '',
+              amazonSoldBy: message.amazonSoldBy || '',
+              title: message.title || ''
+            });
+            setRows(prev => prev.filter(row => row.asin !== message.asin));
+            setProgress({ current: message.progress || 0, total: message.total || asinsToCheck.length });
             break;
           case 'item':
             updateRow(message.item);
@@ -521,11 +609,13 @@ export default function AsinPrecheckPage() {
     };
 
     eventSource.onerror = () => {
+      setSweepStatus(null);
       eventSource.close();
       if (window._asinPrecheckEventSource === eventSource) {
         window._asinPrecheckEventSource = null;
       }
       setRunning(false);
+      publishBlocked();
       setError('Connection lost. Some ASINs may not have loaded.');
     };
 
@@ -641,6 +731,16 @@ export default function AsinPrecheckPage() {
       <Stack spacing={2}>
         {error && <Alert severity="error" onClose={() => setError('')}>{error}</Alert>}
         {success && <Alert severity="success" onClose={() => setSuccess('')}>{success}</Alert>}
+        {blockedItems.length > 0 && (
+          <Alert severity="warning" onClose={() => setBlockedItems([])}>
+            {blockedItems.length} ASIN{blockedItems.length === 1 ? '' : 's'} excluded by brand:{' '}
+            {blockedByBrand.map(group => `${group.brand} ×${group.items.length}`).join(', ')}
+            {'. '}
+            <Button size="small" onClick={() => setBlockedDialogOpen(true)} sx={{ ml: 0.5, py: 0, minWidth: 0 }}>
+              View details
+            </Button>
+          </Alert>
+        )}
 
         <Paper sx={{ ...surfaceSx, p: { xs: 1.5, md: 2 } }}>
           <Stack spacing={1.5}>
@@ -659,6 +759,15 @@ export default function AsinPrecheckPage() {
                 >
                   New Precheck
                 </Button>
+                <Tooltip title="Brands the precheck drops automatically">
+                  <Button
+                    variant="outlined"
+                    onClick={() => setBlockedBrandsManagerOpen(true)}
+                    startIcon={<BlockIcon />}
+                  >
+                    Excluded Brands
+                  </Button>
+                </Tooltip>
                 <Button
                   variant="outlined"
                   onClick={() => selectRows(visibleRows.filter(isRowComplete))}
@@ -873,7 +982,7 @@ export default function AsinPrecheckPage() {
               </FormControl>
               <TextField
                 size="small"
-                label="Keyword in Title"
+                label="Keyword in Title or Brand"
                 value={keywordDraft}
                 onChange={(event) => {
                   setKeywordDraft(event.target.value);
@@ -909,14 +1018,54 @@ export default function AsinPrecheckPage() {
 
           {running && (
             <Box sx={{ mt: 2 }}>
+              {/* During a sweep the solid bar is what is finished and the
+                  animated buffer is what is being retried. */}
               <LinearProgress
-                variant={progress.total > 0 ? 'determinate' : 'indeterminate'}
+                variant={
+                  progress.total === 0
+                    ? 'indeterminate'
+                    : sweepPending > 0
+                      ? 'buffer'
+                      : 'determinate'
+                }
                 value={progress.total > 0 ? Math.min(100, (progress.current / progress.total) * 100) : undefined}
+                valueBuffer={
+                  progress.total > 0 && sweepPending > 0
+                    ? Math.min(100, ((progress.current + sweepPending) / progress.total) * 100)
+                    : undefined
+                }
                 sx={{ height: 8, borderRadius: 999 }}
               />
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.75 }}>
                 {progress.current}/{progress.total} checked
               </Typography>
+
+              {sweepPending > 0 && (
+                <Alert
+                  severity="info"
+                  icon={
+                    <RetryIcon
+                      fontSize="inherit"
+                      sx={{
+                        animation: sweepStatus?.waitingUntil ? 'none' : 'asinPrecheckSpin 1.4s linear infinite',
+                        '@keyframes asinPrecheckSpin': { to: { transform: 'rotate(360deg)' } }
+                      }}
+                    />
+                  }
+                  sx={{ mt: 1.5, alignItems: 'center', py: 0.5 }}
+                >
+                  <Typography variant="body2" component="span" sx={{ fontWeight: 600 }}>
+                    {sweepStatus?.waitingUntil
+                      ? `Retrying ${sweepPending} ASIN${sweepPending === 1 ? '' : 's'} in ${sweepSecondsLeft}s`
+                      : `${sweepPending} ASIN${sweepPending === 1 ? '' : 's'} will be retried automatically`}
+                  </Typography>
+                  <Typography variant="caption" component="span" sx={{ display: 'block', opacity: 0.85 }}>
+                    Amazon didn&apos;t return full data for these on the first pass. Attempt{' '}
+                    {(sweepStatus?.sweep ?? 0) + 1} of {(sweepStatus?.totalSweeps ?? totalSweeps) + 1} — everything else is
+                    already done below, so you can keep reviewing while this finishes.
+                  </Typography>
+                </Alert>
+              )}
             </Box>
           )}
         </Paper>
@@ -935,6 +1084,7 @@ export default function AsinPrecheckPage() {
                 </TableCell>
                 <TableCell sx={{ ...tableHeaderCellSx, minWidth: 130 }}>ASIN</TableCell>
                 <TableCell sx={{ ...tableHeaderCellSx, minWidth: 132 }}>Amazon Image</TableCell>
+                <TableCell sx={{ ...tableHeaderCellSx, minWidth: 140 }}>Brand</TableCell>
                 <TableCell sx={{ ...tableHeaderCellSx, minWidth: 280 }}>Title</TableCell>
                 <TableCell sx={{ ...tableHeaderCellSx, minWidth: 90 }}>Price</TableCell>
                 <TableCell sx={{ ...tableHeaderCellSx, minWidth: 90 }}>Rating</TableCell>
@@ -948,7 +1098,7 @@ export default function AsinPrecheckPage() {
             <TableBody>
               {rows.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={11} align="center" sx={{ py: 6 }}>
+                  <TableCell colSpan={12} align="center" sx={{ py: 6 }}>
                     <Typography color="text.secondary">Start a precheck to review ASINs.</Typography>
                   </TableCell>
                 </TableRow>
@@ -956,7 +1106,7 @@ export default function AsinPrecheckPage() {
 
               {rows.length > 0 && visibleRows.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={11} align="center" sx={{ py: 6 }}>
+                  <TableCell colSpan={12} align="center" sx={{ py: 6 }}>
                     <Typography color="text.secondary">No ASINs match the current filters.</Typography>
                   </TableCell>
                 </TableRow>
@@ -982,13 +1132,26 @@ export default function AsinPrecheckPage() {
                     <Checkbox
                       checked={selectedIds.has(row.id)}
                       onChange={() => toggleRow(row.id)}
-                      disabled={row.status === 'loading'}
+                      disabled={isRowPending(row)}
                     />
                   </TableCell>
                   <TableCell sx={{ fontWeight: 700 }}>{row.asin}</TableCell>
                   <TableCell sx={{ width: 132 }}>
-                    {row.status === 'loading' ? (
-                      <CircularProgress size={22} />
+                    {isRowPending(row) ? (
+                      <Stack alignItems="center" spacing={0.5} sx={{ width: 96 }}>
+                        <CircularProgress size={22} />
+                        {row.status === 'retrying' && (
+                          <Tooltip title={row.errors?.[0] || 'Amazon did not return full data on the last attempt'}>
+                            <Chip
+                              size="small"
+                              label={`Retry ${row.retryPass || 1}`}
+                              color="info"
+                              variant="outlined"
+                              sx={{ height: 18, fontSize: 10, '& .MuiChip-label': { px: 0.75 } }}
+                            />
+                          </Tooltip>
+                        )}
+                      </Stack>
                     ) : row.image ? (
                       <ButtonBase
                         onClick={() => setImagePreview({ src: row.image, asin: row.asin, title: row.title })}
@@ -1020,8 +1183,17 @@ export default function AsinPrecheckPage() {
                       <Typography variant="caption" color="text.secondary">No image</Typography>
                     )}
                   </TableCell>
+                  <TableCell sx={{ minWidth: 140 }}>
+                    {isRowPending(row) ? (
+                      <Typography variant="body2" color="text.secondary">Fetching...</Typography>
+                    ) : row.brand ? (
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>{row.brand}</Typography>
+                    ) : (
+                      <Typography variant="caption" color="text.secondary">Unknown</Typography>
+                    )}
+                  </TableCell>
                   <TableCell sx={{ minWidth: 280, maxWidth: 420 }}>
-                    {row.status === 'loading' ? (
+                    {isRowPending(row) ? (
                       <Typography variant="body2" color="text.secondary">Fetching...</Typography>
                     ) : row.title ? (
                       <Stack spacing={0.75} alignItems="flex-start">
@@ -1069,7 +1241,7 @@ export default function AsinPrecheckPage() {
                     )}
                   </TableCell>
                   <TableCell>
-                    {row.status === 'loading' ? (
+                    {isRowPending(row) ? (
                       <Chip label="Checking" size="small" />
                     ) : row.inStock === true ? (
                       <Tooltip title={row.availabilityStatus || 'In stock on Amazon'} arrow>
@@ -1091,7 +1263,7 @@ export default function AsinPrecheckPage() {
                     )}
                   </TableCell>
                   <TableCell>
-                    {row.status === 'loading' ? (
+                    {isRowPending(row) ? (
                       <Tooltip title={getDeliveryTooltip(row)} arrow>
                         <Chip label="Checking" size="small" />
                       </Tooltip>
@@ -1116,7 +1288,7 @@ export default function AsinPrecheckPage() {
                     </Typography>
                   </TableCell>
                   <TableCell>
-                    {row.status === 'loading' ? (
+                    {isRowPending(row) ? (
                       <Chip label="Checking" size="small" />
                     ) : row.active ? (
                       <Tooltip title={`SKU ${row.sku || ''} is already live on this seller's eBay store`} arrow>
@@ -1310,6 +1482,70 @@ export default function AsinPrecheckPage() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setImagePreview(null)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      <PrecheckBlockedBrandsDialog
+        open={blockedBrandsManagerOpen}
+        onClose={() => setBlockedBrandsManagerOpen(false)}
+      />
+
+      <Dialog open={blockedDialogOpen} onClose={() => setBlockedDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          {blockedItems.length} ASIN{blockedItems.length === 1 ? '' : 's'} excluded by brand
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+            These ASINs were dropped from the precheck because their brand or their seller
+            (&ldquo;Sold by&rdquo;) is on the exclusion list. They are not shown in the results table.
+          </Typography>
+          <Stack spacing={1.5}>
+            {blockedByBrand.map(group => (
+              <Box key={group.brand}>
+                <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
+                  <Typography variant="subtitle2">{group.brand}</Typography>
+                  <Chip size="small" label={`${group.items.length} ASIN${group.items.length === 1 ? '' : 's'}`} />
+                </Stack>
+                <Stack spacing={0.25} sx={{ pl: 1 }}>
+                  {group.items.map(item => (
+                    <Typography key={item.asin} variant="body2" sx={{ fontFamily: 'monospace' }}>
+                      {item.asin}
+                      {item.matchedOn === 'soldBy' ? (
+                        <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1, fontFamily: 'inherit' }}>
+                          sold by: {item.amazonSoldBy}{item.amazonBrand ? ` · brand: ${item.amazonBrand}` : ''}
+                        </Typography>
+                      ) : item.amazonBrand && item.amazonBrand.toLowerCase() !== group.brand.toLowerCase() && (
+                        <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1, fontFamily: 'inherit' }}>
+                          brand: {item.amazonBrand}
+                        </Typography>
+                      )}
+                      {item.title && (
+                        <Typography
+                          component="span"
+                          variant="caption"
+                          color="text.secondary"
+                          sx={{ ml: 1, fontFamily: (muiTheme) => muiTheme.typography.fontFamily }}
+                        >
+                          {item.title.length > 70 ? `${item.title.slice(0, 70)}…` : item.title}
+                        </Typography>
+                      )}
+                    </Typography>
+                  ))}
+                </Stack>
+              </Box>
+            ))}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => navigate('/admin/asin-precheck-exclusions')}>
+            View history
+          </Button>
+          <Button onClick={() => { setBlockedDialogOpen(false); setBlockedBrandsManagerOpen(true); }}>
+            Manage excluded brands
+          </Button>
+          <Button variant="contained" onClick={() => setBlockedDialogOpen(false)} sx={yellowFilledButtonSx}>
+            Got it
+          </Button>
         </DialogActions>
       </Dialog>
 
