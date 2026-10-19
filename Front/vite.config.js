@@ -1,10 +1,12 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
+const onVercel = Boolean(process.env.VERCEL);
+
 export default defineConfig({
   plugins: [react()],
   build: {
-    outDir: '../Back/public/app',
+    outDir: onVercel ? 'dist' : '../Back/public/app',
     emptyOutDir: true
   },
   server: {
