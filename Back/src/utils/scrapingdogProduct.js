@@ -226,53 +226,6 @@ function extractSize(info, data) {
 }
 
 /**
- * Pull the brand name out of Amazon's brand-browse link:
- *   /BINQIGOO/b/ref=bl_dp_s_web_1185?...&field-lbr_brands_browse-bin=BINQIGOO
- * Only the query param is used — the leading path segment is hyphenated for
- * multi-word brands, and /stores/<slug> slugs need not match the brand.
- */
-function brandFromUrl(brandUrl) {
-  const param = String(brandUrl || '').match(/field-lbr_brands_browse-bin=([^&#]+)/);
-  if (!param) return '';
-  try {
-    return decodeURIComponent(param[1].replace(/\+/g, ' '));
-  } catch {
-    return '';
-  }
-}
-
-/** Strip Amazon's byline dressing ("Visit the X Store", "Brand: X"). */
-function cleanBrand(value) {
-  return cleanText(String(value || '').replace(/^Visit the /, '').replace(/ Store$/, '').replace(/^Brand:\s*/i, ''));
-}
-
-/**
- * Deeper brand detection, used ONLY by the ASIN precheck's brand exclusion
- * (surfaced as `detectedBrand`, never as `brand`). Some listings carry no
- * byline and label the details row "Brand Name" rather than "Brand", so the
- * regular brand would be empty and an excluded brand would slip through.
- * Kept separate so `brand` (title stripping, eBay Brand field) is unchanged.
- * Manufacturer is never used — it is frequently a different company.
- */
-function detectBrand(info, data) {
-  const candidates = [data.brand, info.brand, info.brand_name, brandFromUrl(data.brand_url)];
-  for (const candidate of candidates) {
-    const brand = cleanBrand(candidate);
-    if (brand) return brand;
-  }
-  return '';
-}
-
-/**
- * The buy-box seller ("Sold by"), used only by the precheck's brand
- * exclusion: brand owners often sell under their own name while the brand
- * field is blank or generic.
- */
-function extractSoldBy(data) {
-  return cleanText(String(data.sold_by || data.merchant_info || ''));
-}
-
-/**
  * Slim the raw response before caching/returning. Scrapingdog responses are
  * much larger than ScraperAPI's (page-wide images array, aplus media blocks,
  * review snippets) and rawData flows into the in-memory ASIN cache and SSE
